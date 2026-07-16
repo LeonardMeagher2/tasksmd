@@ -167,7 +167,7 @@ if (-not $IS_RETRY) {
 
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = "opencode"
-$psi.Arguments = "run --format json --title task:$SLUG"
+$psi.Arguments = "run --auto --format json --title task:$SLUG"
 if ($MODEL) { $psi.Arguments += " --model $MODEL" }
 if ($SESSION_ID) {
   $psi.Arguments += " --session $SESSION_ID"

@@ -171,7 +171,7 @@ fi
 
 OUTPUT_FILE=$(mktemp)
 
-set -- "run" "--format" "json" "--title" "task:$SLUG"
+set -- "run" "--auto" "--format" "json" "--title" "task:$SLUG"
 [ -n "$MODEL" ] && set -- "$@" "--model" "$MODEL"
 if [ -n "$SESSION_ID" ]; then
   set -- "$@" "--session" "$SESSION_ID"
