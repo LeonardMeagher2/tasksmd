@@ -36,7 +36,8 @@ Worker (cron every 5 min):
 │   ├── plugins/
 │   │   └── tasks.ts             ← auto-installs worker via launchd on load
 │   └── tasks/
-│       └── worker.ts            ← the worker (called by launchd every 5 min)
+│       ├── worker.sh            ← worker for Unix/macOS (POSIX sh)
+│       └── worker.ps1           ← worker for Windows (PowerShell)
 ├── TASKS.md                     ← the board (project root)
 └── .tasks/
     ├── rewrite-auth.md          ← task definition (prompt, acceptance criteria)
@@ -124,7 +125,7 @@ The agent never touches `.tasks/.state/`. It only creates task definitions.
 
 ---
 
-## Worker (`.opencode/tasks/worker.ts`)
+## Worker (`.opencode/tasks/worker.sh` / `worker.ps1`)
 
 One task per tick. Called by cron via `bun`. Replaces the shell script — same logic, TypeScript.
 

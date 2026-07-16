@@ -10,11 +10,16 @@ function slug(dir: string): string {
   return dir.replace(/[^a-zA-Z0-9]/g, "-").replace(/^-+|-+$/g, "").toLowerCase()
 }
 
-function bunPath(): string {
-  try {
-    return execSync("which bun", { encoding: "utf-8" }).trim()
-  } catch {
-    return os.platform() === "win32" ? "bun" : "/usr/local/bin/bun"
+function workerCmd(dir: string): { program: string; args: string[] } {
+  if (os.platform() === "win32") {
+    return {
+      program: "powershell.exe",
+      args: ["-File", path.join(dir, ".opencode", "tasks", "worker.ps1")],
+    }
+  }
+  return {
+    program: "/bin/sh",
+    args: [path.join(dir, ".opencode/tasks/worker.sh")],
   }
 }
 
@@ -30,11 +35,14 @@ function plistPath(dir: string): string {
 
 function installLaunchd(dir: string): string {
   const plist = plistPath(dir)
-  const bun = bunPath()
-  const worker = path.join(dir, ".opencode/tasks/worker.ts")
+  const cmd = workerCmd(dir)
   const log = path.join(dir, ".tasks", "worker.log")
 
   mkdirSync(path.dirname(plist), { recursive: true })
+
+  const args = [cmd.program, ...cmd.args].map((a) =>
+    `        <string>${a}</string>`
+  ).join("\n")
 
   const content = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -44,9 +52,7 @@ function installLaunchd(dir: string): string {
     <string>${label(dir)}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>${bun}</string>
-        <string>run</string>
-        <string>${worker}</string>
+${args}
     </array>
     <key>WorkingDirectory</key>
     <string>${dir}</string>
@@ -87,8 +93,9 @@ function serviceName(dir: string): string {
 function installSystemd(dir: string): string {
   const sdDir = systemdDir()
   const name = serviceName(dir)
-  const bun = bunPath()
-  const worker = path.join(dir, ".opencode/tasks/worker.ts")
+  const cmd = workerCmd(dir)
+  const exe = cmd.program
+  const args = cmd.args.join(" ")
   const log = path.join(dir, ".tasks", "worker.log")
 
   mkdirSync(sdDir, { recursive: true })
@@ -99,7 +106,7 @@ Description=OpenCode tasks worker for ${slug(dir)}
 [Service]
 Type=exec
 WorkingDirectory=${dir}
-ExecStart=${bun} run ${worker}
+ExecStart=${exe} ${args}
 Restart=no
 StandardOutput=append:${log}
 StandardError=append:${log}
@@ -146,11 +153,11 @@ function taskName(dir: string): string {
 
 function installWin32(dir: string): string {
   const name = taskName(dir)
-  const bun = bunPath()
-  const worker = path.join(dir, ".opencode/tasks/worker.ts")
+  const cmd = workerCmd(dir)
+  const tr = `${cmd.program} ${cmd.args.join(" ")}`
 
   execSync(
-    `schtasks /Create /SC MINUTE /MO 5 /TN "${name}" /TR "${bun} run ${worker}" /F`,
+    `schtasks /Create /SC MINUTE /MO 5 /TN "${name}" /TR "${tr}" /F`,
     { stdio: "pipe" },
   )
   return `Worker installed (Task Scheduler): ${name}`
