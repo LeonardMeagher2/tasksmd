@@ -99,7 +99,7 @@ export async function tryRunTask(client: unknown, dir: string): Promise<void> {
 
   log(dir, `model=${model}, prompt=${prompt.slice(0, 60)}`)
 
-  prompt = `Load the tasks skill. You are assigned this task now. Execute it in the current project using your tools. Do not only explain or make a plan. Do not ask normal clarification questions; choose a sensible minimal result and proceed. Verify the result before finishing. If truly blocked, state the blocker. After verifying the work, mark this exact task [x] in TASKS.md. If blocked or incomplete, leave it [~].\n\nTask:\n${prompt}`
+  prompt = `Load the tasks skill. You are assigned this task now. Execute it in the current project using your tools. Do not only explain or make a plan. Do not ask normal clarification questions; choose a sensible minimal result and proceed. Verify the result before finishing. If truly blocked, state the blocker. After verifying the work, mark this exact task [x] in TASKS.md. If blocked, mark it [!].\n\nTask:\n${prompt}`
 
   // Mark [ ] → [~]
   const lines = content.split("\n")
