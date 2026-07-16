@@ -11,9 +11,8 @@ export PROJECT_ROOT
 TASKS_FILE="$PROJECT_ROOT/TASKS.md"
 TASKS_DIR="$PROJECT_ROOT/.tasks"
 STATE_DIR="$TASKS_DIR/.state"
-WORKTREE_BASE="$PROJECT_ROOT/.worktrees"
 
-mkdir -p "$STATE_DIR" "$WORKTREE_BASE"
+mkdir -p "$STATE_DIR"
 
 # ── Helpers ────────────────────────────────────────────
 
@@ -82,19 +81,17 @@ while IFS= read -r line || [ -n "$line" ]; do
 
   if [ "$state" = "active" ]; then
     slug="$(slugify "$(extract_link_text "$raw" || echo "$raw")")"
-    if [ -d "$WORKTREE_BASE/$slug" ]; then
-      state_file="$STATE_DIR/$slug.md"
-      if [ -f "$state_file" ]; then
-        pid="$(sed -n 's/^pid:[[:space:]]*\([0-9]*\).*/\1/p' "$state_file")"
-        if [ -n "$pid" ] && is_process_alive "$pid"; then
-          echo "Task $slug is still running (pid $pid). Skipping."
-          rm -f "$BODY_TMP"
-          exit 0
-        fi
+    state_file="$STATE_DIR/$slug.md"
+    if [ -f "$state_file" ]; then
+      pid="$(sed -n 's/^pid:[[:space:]]*\([0-9]*\).*/\1/p' "$state_file")"
+      if [ -n "$pid" ] && is_process_alive "$pid"; then
+        echo "Task $slug is still running (pid $pid). Skipping."
+        rm -f "$BODY_TMP"
+        exit 0
       fi
-      TASK_IDX=$line_num; TASK_RAW="$raw"; IS_RETRY=true
-      break
     fi
+    TASK_IDX=$line_num; TASK_RAW="$raw"; IS_RETRY=true
+    break
   fi
 done < "$BODY_TMP"
 
@@ -157,16 +154,6 @@ if [ "$IS_RETRY" = true ] && [ -f "$state_file" ]; then
   SESSION_ID="$(sed -n 's/^session:[[:space:]]*//p' "$state_file")"
 fi
 
-# ── Worktree ──────────────────────────────────────────
-
-WORKTREE_DIR="$WORKTREE_BASE/$SLUG"
-if [ ! -d "$WORKTREE_DIR" ]; then
-  if ! git -C "$PROJECT_ROOT" worktree add "$WORKTREE_DIR" HEAD >/dev/null 2>&1; then
-    echo "Failed to create worktree."
-    exit 1
-  fi
-fi
-
 # ── Mark as in-progress ───────────────────────────────
 
 if [ "$IS_RETRY" = false ]; then
@@ -194,7 +181,7 @@ fi
 
 echo "Running: opencode $*"
 
-(cd "$WORKTREE_DIR" && opencode "$@" > "$OUTPUT_FILE" 2>&1) &
+(cd "$PROJECT_ROOT" && opencode "$@" > "$OUTPUT_FILE" 2>&1) &
 CHILD_PID=$!
 
 echo "pid: $CHILD_PID" > "$state_file"

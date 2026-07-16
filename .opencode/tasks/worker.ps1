@@ -5,9 +5,8 @@ $PROJECT_ROOT = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $TASKS_FILE = Join-Path $PROJECT_ROOT "TASKS.md"
 $TASKS_DIR = Join-Path $PROJECT_ROOT ".tasks"
 $STATE_DIR = Join-Path $TASKS_DIR ".state"
-$WORKTREE_BASE = Join-Path $PROJECT_ROOT ".worktrees"
 
-New-Item -ItemType Directory -Force -Path $STATE_DIR, $WORKTREE_BASE | Out-Null
+New-Item -ItemType Directory -Force -Path $STATE_DIR | Out-Null
 
 # ── Helpers ────────────────────────────────────────────
 
@@ -74,22 +73,19 @@ for ($i = 0; $i -lt $bodyLines.Count; $i++) {
   if ($state -eq "active") {
     $slug = Slugify (Extract-LinkText $taskRaw)
     if (-not $slug) { $slug = Slugify $taskRaw }
-    $worktreeDir = Join-Path $WORKTREE_BASE $slug
-    if (Test-Path $worktreeDir) {
-      $stateFile = Join-Path $STATE_DIR "$slug.md"
-      if (Test-Path $stateFile) {
-        $stateContent = Get-Content $stateFile -Raw
-        if ($stateContent -match '(?m)^pid:\s*(\d+)') {
-          $existingPid = [int]$matches[1]
-          if (Is-ProcessAlive $existingPid) {
-            Write-Host "Task $slug is still running (pid $existingPid). Skipping."
-            exit 0
-          }
+    $stateFile = Join-Path $STATE_DIR "$slug.md"
+    if (Test-Path $stateFile) {
+      $stateContent = Get-Content $stateFile -Raw
+      if ($stateContent -match '(?m)^pid:\s*(\d+)') {
+        $existingPid = [int]$matches[1]
+        if (Is-ProcessAlive $existingPid) {
+          Write-Host "Task $slug is still running (pid $existingPid). Skipping."
+          exit 0
         }
       }
-      $TASK_IDX = $i; $TASK_RAW = $taskRaw; $IS_RETRY = $true
-      break
     }
+    $TASK_IDX = $i; $TASK_RAW = $taskRaw; $IS_RETRY = $true
+    break
   }
 }
 
@@ -154,13 +150,6 @@ if ($IS_RETRY -and (Test-Path $stateFile)) {
   }
 }
 
-# ── Worktree ──────────────────────────────────────────
-
-$WORKTREE_DIR = Join-Path $WORKTREE_BASE $SLUG
-if (-not (Test-Path $WORKTREE_DIR)) {
-  git -C $PROJECT_ROOT worktree add $WORKTREE_DIR HEAD 2>$null | Out-Null
-}
-
 # ── Mark as in-progress ───────────────────────────────
 
 if (-not $IS_RETRY) {
@@ -188,7 +177,7 @@ if ($SESSION_ID) {
 $psi.RedirectStandardOutput = $true
 $psi.RedirectStandardError = $true
 $psi.UseShellExecute = $false
-$psi.WorkingDirectory = $WORKTREE_DIR
+$psi.WorkingDirectory = $PROJECT_ROOT
 
 Write-Host "Running: opencode $($psi.Arguments)"
 
