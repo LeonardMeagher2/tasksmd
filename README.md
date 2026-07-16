@@ -200,3 +200,18 @@ When opencode 2 ships:
 - Plugin hooks `file.edited` + `session.idle` for instant processing instead of polling
 
 Same TASKS.md format. Same skill. Just swap the executor.
+
+---
+
+## Reference links
+
+| Resource | Link |
+|----------|------|
+| OpenCode plugin API (V1) | https://opencode.ai/docs/plugins |
+| Custom tools | https://opencode.ai/docs/custom-tools |
+| CLI reference (`opencode run`) | https://opencode.ai/docs/cli |
+| Skills | https://opencode.ai/docs/skills |
+| OpenCode plugin dev guide | https://devcxl.cn/en-us/blog/opencode-plugin-development-guide |
+| OpenCode Book — plugin deep dive | https://www.opencodebook.xyz/en/chapter_13_plugin_system/13.1_plugin_interface_definition |
+| `@opencode-ai/plugin` on npm | https://www.npmjs.com/package/@opencode-ai/plugin |
+| GitHub — anomalyco/opencode | https://github.com/anomalyco/opencode |
