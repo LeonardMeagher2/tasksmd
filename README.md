@@ -34,9 +34,9 @@ Worker (cron every 5 min):
 │   │   └── tasks/
 │   │       └── SKILL.md         ← teaches agent the format (/tasks)
 │   ├── plugins/
-│   │   └── task-queue.ts        ← V1 plugin (manages queue, adds tools)
+│   │   └── task-queue.ts        ← V1 plugin (adds queue_task + tasks tools)
 │   └── tasks/
-│       └── worker.sh            ← the worker script
+│       └── worker.ts            ← the worker (called by cron via `bun`)
 ├── TASKS.md                     ← the board (project root)
 └── .tasks/
     ├── rewrite-auth.md          ← task definition (prompt, acceptance criteria)
@@ -124,9 +124,9 @@ The agent never touches `.tasks/.state/`. It only creates task definitions.
 
 ---
 
-## Worker script (`.opencode/tasks/worker.sh`)
+## Worker (`.opencode/tasks/worker.ts`)
 
-One task per tick. Called by cron every 5 minutes.
+One task per tick. Called by cron via `bun`. Replaces the shell script — same logic, TypeScript.
 
 ```
 1. Read TASKS.md frontmatter for model, max_active
@@ -166,7 +166,7 @@ If the worker crashes mid-task:
 schedule_job \
   --name "task-worker" \
   --schedule "*/5 * * * *" \
-  --command "bash .opencode/tasks/worker.sh" \
+  --command "bun run .opencode/tasks/worker.ts" \
   --workdir "/path/to/project"
 ```
 
@@ -190,16 +190,16 @@ No custom tools needed. The agent uses `read`, `write`, `edit`, `patch` directly
 
 ---
 
-## V1 Plugin (optional)
+## V1 Plugin
 
-`.opencode/plugins/task-queue.ts`. Adds convenience, not required.
+`.opencode/plugins/task-queue.ts`. Adds two tools available in any opencode session:
 
-| Hook | Purpose |
+| Tool | Purpose |
 |------|---------|
-| `tool.execute.after` | Detect TASKS.md edits during session |
-| `session.idle` | Nudge about pending tasks |
-| `queue_task` tool | Validate and append task to TASKS.md |
-| `tasks` tool | Show current board status |
+| `queue_task` | Add a task to TASKS.md (supports inline or linked file) |
+| `tasks` | Show current board status (pending / active / done counts) |
+
+Not required for the core flow (the agent can edit TASKS.md directly), but provides validation and convenience.
 
 ---
 
