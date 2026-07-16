@@ -103,7 +103,7 @@ while IFS= read -r line || [ -n "$line" ]; do
     if [ -f "$state_file" ]; then
       status="$(sed -n 's/^status:[[:space:]]*//p' "$state_file" | head -1)"
       pid="$(sed -n 's/^pid:[[:space:]]*\([0-9]*\).*/\1/p' "$state_file")"
-      if [ "$status" = success ]; then
+      if [ "${status:-success}" = success ]; then
         continue
       fi
       if [ "${status:-running}" = running ] && [ -n "$pid" ] && is_process_alive "$pid"; then
@@ -171,7 +171,10 @@ else
   PROMPT="$TASK_RAW"
 fi
 
-PROMPT="@tasks\n\nTask from TASKS.md:\n$PROMPT"
+PROMPT="Load the tasks skill. You are assigned this task now. Execute it in the current project using your tools. Do not only explain or make a plan. Do not ask normal clarification questions; choose a sensible minimal result and proceed. Verify the result before finishing. If truly blocked, state the blocker. After verifying the work, mark this exact task [x] in TASKS.md. If blocked or incomplete, leave it [~].
+
+Task:
+$PROMPT"
 
 state_file="$STATE_DIR/$SLUG.md"
 if [ "$IS_RETRY" = true ] && [ -f "$state_file" ]; then
@@ -197,17 +200,15 @@ OUTPUT_FILE=$(mktemp)
 
 set -- "run" "--auto" "--format" "json" "--title" "task:$SLUG"
 [ -n "$SERVER_URL" ] && set -- "$@" "--attach" "$SERVER_URL"
-set -- "$@" "--agent" "build"
+set -- "$@" "--agent" "task-runner"
 [ -n "$MODEL" ] && set -- "$@" "--model" "$MODEL"
 if [ -n "$SESSION_ID" ]; then
   set -- "$@" "--session" "$SESSION_ID"
-else
-  set -- "$@" "$PROMPT"
 fi
 
 echo "Running: $OPENCODE_BIN $*"
 
-(cd "$PROJECT_ROOT" && "$OPENCODE_BIN" "$@" > "$OUTPUT_FILE" 2>&1) &
+(cd "$PROJECT_ROOT" && printf '%s' "$PROMPT" | "$OPENCODE_BIN" "$@" > "$OUTPUT_FILE" 2>&1) &
 CHILD_PID=$!
 
 printf 'pid: %s\nstatus: running\n' "$CHILD_PID" > "$state_file"

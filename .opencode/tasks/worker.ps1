@@ -167,7 +167,7 @@ if ($linkPath) {
   $PROMPT = $TASK_RAW
 }
 
-$PROMPT = "@tasks`n`nTask from TASKS.md:`n$PROMPT"
+$PROMPT = "Load the tasks skill. You are assigned this task now. Execute it in the current project using your tools. Do not only explain or make a plan. Do not ask normal clarification questions; choose a sensible minimal result and proceed. Verify the result before finishing. If truly blocked, state the blocker. After verifying the work, mark this exact task [x] in TASKS.md. If blocked or incomplete, leave it [~].`n`nTask:`n$PROMPT"
 
 $stateFile = Join-Path $STATE_DIR "$SLUG.md"
 if ($IS_RETRY -and (Test-Path $stateFile)) {
@@ -196,13 +196,12 @@ $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = $OPENCODE_BIN
 $psi.Arguments = "run --auto --format json --title task:$SLUG"
 if ($SERVER_URL) { $psi.Arguments += " --attach $SERVER_URL" }
-$psi.Arguments += " --agent build"
+$psi.Arguments += " --agent task-runner"
 if ($MODEL) { $psi.Arguments += " --model $MODEL" }
 if ($SESSION_ID) {
   $psi.Arguments += " --session $SESSION_ID"
-} else {
-  $psi.Arguments += " `"$PROMPT`""
 }
+$psi.RedirectStandardInput = $true
 $psi.RedirectStandardOutput = $true
 $psi.RedirectStandardError = $true
 $psi.UseShellExecute = $false
@@ -214,6 +213,9 @@ $process = [System.Diagnostics.Process]::Start($psi)
 $CHILD_PID = $process.Id
 
 Set-Content -Path $stateFile -Value "pid: $CHILD_PID`nstatus: running"
+
+$process.StandardInput.Write($PROMPT)
+$process.StandardInput.Close()
 
 $process.WaitForExit()
 $OUTPUT = $process.StandardOutput.ReadToEnd()

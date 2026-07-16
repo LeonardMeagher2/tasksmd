@@ -79,6 +79,18 @@ export const TasksPlugin: Plugin = async ({ directory, client }) => {
   }
 
   return {
+    config: (config: any) => {
+      config.agent ??= {}
+      config.agent["task-runner"] = {
+        ...(config.agent["task-runner"] ?? {}),
+        mode: "primary",
+        description: "Executes TASKS.md work items without spawning subagents.",
+        permission: {
+          ...(config.agent["task-runner"]?.permission ?? {}),
+          task: "deny",
+        },
+      }
+    },
     tool: {
       start_tasks_worker: tool({
         description: "Install or reinstall the background worker (launchd/systemd/schtasks, runs every 5 min).",

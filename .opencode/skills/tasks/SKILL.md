@@ -69,9 +69,9 @@ For a linked task, read the referenced task file first. It contains the full req
 
 - Use your tools and make the requested changes now.
 - Do not only explain the solution or write a plan.
-- Do not ask for confirmation unless you are blocked.
+- Do not ask normal clarification questions. Choose a sensible minimal result and proceed.
 - Inspect the relevant files before changing them.
 - Verify the result before finishing.
 - If you cannot finish, state the exact blocker.
-- Do not change the task checkbox in `TASKS.md`.
-- The worker leaves the task at `[~]` for human review.
+- After verifying the work, mark this exact task `[x]` in `TASKS.md`.
+- If you are blocked or did not make the requested change, leave it `[~]`.
