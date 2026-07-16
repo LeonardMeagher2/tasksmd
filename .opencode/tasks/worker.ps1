@@ -5,8 +5,29 @@ $PROJECT_ROOT = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $TASKS_FILE = Join-Path $PROJECT_ROOT "TASKS.md"
 $TASKS_DIR = Join-Path $PROJECT_ROOT ".tasks"
 $STATE_DIR = Join-Path $TASKS_DIR ".state"
+$CONFIG_FILE = Join-Path $TASKS_DIR "config"
+$SERVER_URL = $env:OPENCODE_TASKS_SERVER_URL
 
 New-Item -ItemType Directory -Force -Path $STATE_DIR | Out-Null
+
+$env:PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$env:PATH"
+$OPENCODE_BIN = ""
+if (Test-Path $CONFIG_FILE) {
+  $configLine = Get-Content $CONFIG_FILE | Where-Object { $_ -match '^opencode_path=' } | Select-Object -First 1
+  if ($configLine) { $OPENCODE_BIN = $configLine.Substring("opencode_path=".Length) }
+  if (-not $SERVER_URL) {
+    $serverLine = Get-Content $CONFIG_FILE | Where-Object { $_ -match '^server_url=' } | Select-Object -First 1
+    if ($serverLine) { $SERVER_URL = $serverLine.Substring("server_url=".Length) }
+  }
+}
+if (-not $OPENCODE_BIN) {
+  $command = Get-Command opencode -ErrorAction SilentlyContinue
+  if ($command) { $OPENCODE_BIN = $command.Source }
+}
+if (-not $OPENCODE_BIN -or -not (Test-Path $OPENCODE_BIN)) {
+  Write-Host "opencode binary not found; update $CONFIG_FILE"
+  exit 1
+}
 
 # ── Helpers ────────────────────────────────────────────
 
@@ -76,7 +97,10 @@ for ($i = 0; $i -lt $bodyLines.Count; $i++) {
     $stateFile = Join-Path $STATE_DIR "$slug.md"
     if (Test-Path $stateFile) {
       $stateContent = Get-Content $stateFile -Raw
-      if ($stateContent -match '(?m)^pid:\s*(\d+)') {
+      $stateStatus = "running"
+      if ($stateContent -match '(?m)^status:\s*(\S+)') { $stateStatus = $matches[1] }
+      if ($stateStatus -eq "success") { continue }
+      if ($stateStatus -eq "running" -and $stateContent -match '(?m)^pid:\s*(\d+)') {
         $existingPid = [int]$matches[1]
         if (Is-ProcessAlive $existingPid) {
           Write-Host "Task $slug is still running (pid $existingPid). Skipping."
@@ -125,6 +149,7 @@ $SESSION_ID = ""
 
 $linkPath = Extract-LinkPath $TASK_RAW
 if ($linkPath) {
+  $PROMPT = $TASK_RAW
   $taskFile = Join-Path $PROJECT_ROOT $linkPath
   if (-not (Test-Path $taskFile)) {
     Write-Host "Linked task file not found: $taskFile"
@@ -136,11 +161,13 @@ if ($linkPath) {
     $MODEL = $matches[1].Trim()
   }
   if ($taskParts.Count -ge 3) {
-    $PROMPT = $taskParts[2]
+    $PROMPT = $TASK_RAW
   }
 } else {
   $PROMPT = $TASK_RAW
 }
+
+$PROMPT = "@tasks`n`nTask from TASKS.md:`n$PROMPT"
 
 $stateFile = Join-Path $STATE_DIR "$SLUG.md"
 if ($IS_RETRY -and (Test-Path $stateFile)) {
@@ -166,25 +193,27 @@ if (-not $IS_RETRY) {
 # ── Run opencode ──────────────────────────────────────
 
 $psi = New-Object System.Diagnostics.ProcessStartInfo
-$psi.FileName = "opencode"
+$psi.FileName = $OPENCODE_BIN
 $psi.Arguments = "run --auto --format json --title task:$SLUG"
+if ($SERVER_URL) { $psi.Arguments += " --attach $SERVER_URL" }
+$psi.Arguments += " --agent build"
 if ($MODEL) { $psi.Arguments += " --model $MODEL" }
 if ($SESSION_ID) {
   $psi.Arguments += " --session $SESSION_ID"
 } else {
-  $psi.Arguments += " -p `"$PROMPT`""
+  $psi.Arguments += " `"$PROMPT`""
 }
 $psi.RedirectStandardOutput = $true
 $psi.RedirectStandardError = $true
 $psi.UseShellExecute = $false
 $psi.WorkingDirectory = $PROJECT_ROOT
 
-Write-Host "Running: opencode $($psi.Arguments)"
+Write-Host "Running: $OPENCODE_BIN $($psi.Arguments)"
 
 $process = [System.Diagnostics.Process]::Start($psi)
 $CHILD_PID = $process.Id
 
-Set-Content -Path $stateFile -Value "pid: $CHILD_PID"
+Set-Content -Path $stateFile -Value "pid: $CHILD_PID`nstatus: running"
 
 $process.WaitForExit()
 $OUTPUT = $process.StandardOutput.ReadToEnd()
@@ -195,10 +224,10 @@ $EXIT_CODE = $process.ExitCode
 if ($OUTPUT -match '"sessionID":"([^"]+)"') {
   $SESSION_ID = $matches[1]
 }
-
 $stateContent = @"
 pid: $CHILD_PID
 session: $SESSION_ID
+status: $(if ($EXIT_CODE -eq 0) { "success" } else { "failed" })
 exit_code: $EXIT_CODE
 
 output:
@@ -209,22 +238,7 @@ Set-Content -Path $stateFile -Value $stateContent
 # ── Handle result ─────────────────────────────────────
 
 if ($EXIT_CODE -eq 0) {
-  $newLines = Get-Content $TASKS_FILE
-  for ($i = 0; $i -lt $newLines.Count; $i++) {
-    if ($newLines[$i] -match '^- \[~\]') {
-      $rest = $newLines[$i] -replace '^- \[~\] ', ''
-      $lt = Extract-LinkText $rest
-      $rawSlug = &{ if ($lt) { $lt } else { $rest } }
-      $mySlug = Slugify $rawSlug
-      if ($mySlug -eq $SLUG) {
-        $newLines[$i] = $newLines[$i] -replace '- \[~\]', '- [x]'
-        break
-      }
-    }
-  }
-  Set-Content -Path $TASKS_FILE -Value ($newLines -join "`n")
-  Remove-Item -Path $stateFile -Force -ErrorAction SilentlyContinue
-  Write-Host "Task completed: $SLUG"
+  Write-Host "Task finished: $SLUG (review and mark [x] when complete)"
 } else {
   Write-Host "Failed (exit $EXIT_CODE). State saved."
 }

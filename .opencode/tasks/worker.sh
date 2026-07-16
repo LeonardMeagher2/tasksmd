@@ -12,6 +12,24 @@ TASKS_FILE="$PROJECT_ROOT/TASKS.md"
 TASKS_DIR="$PROJECT_ROOT/.tasks"
 STATE_DIR="$TASKS_DIR/.state"
 
+export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:$PATH"
+CONFIG_FILE="$TASKS_DIR/config"
+OPENCODE_BIN=""
+SERVER_URL="${OPENCODE_TASKS_SERVER_URL:-}"
+if [ -f "$CONFIG_FILE" ]; then
+  OPENCODE_BIN="$(sed -n 's/^opencode_path=//p' "$CONFIG_FILE" | head -1)"
+  if [ -z "$SERVER_URL" ]; then
+    SERVER_URL="$(sed -n 's/^server_url=//p' "$CONFIG_FILE" | head -1)"
+  fi
+fi
+if [ -z "$OPENCODE_BIN" ]; then
+  OPENCODE_BIN="$(command -v opencode 2>/dev/null || true)"
+fi
+if [ -z "$OPENCODE_BIN" ] || [ ! -x "$OPENCODE_BIN" ]; then
+  echo "opencode binary not found; update $CONFIG_FILE"
+  exit 1
+fi
+
 mkdir -p "$STATE_DIR"
 
 # ── Helpers ────────────────────────────────────────────
@@ -83,8 +101,12 @@ while IFS= read -r line || [ -n "$line" ]; do
     slug="$(slugify "$(extract_link_text "$raw" || echo "$raw")")"
     state_file="$STATE_DIR/$slug.md"
     if [ -f "$state_file" ]; then
+      status="$(sed -n 's/^status:[[:space:]]*//p' "$state_file" | head -1)"
       pid="$(sed -n 's/^pid:[[:space:]]*\([0-9]*\).*/\1/p' "$state_file")"
-      if [ -n "$pid" ] && is_process_alive "$pid"; then
+      if [ "$status" = success ]; then
+        continue
+      fi
+      if [ "${status:-running}" = running ] && [ -n "$pid" ] && is_process_alive "$pid"; then
         echo "Task $slug is still running (pid $pid). Skipping."
         rm -f "$BODY_TMP"
         exit 0
@@ -144,10 +166,12 @@ if [ -n "$link_path" ]; then
   fi
   task_model="$(awk 'BEGIN{c=0} /^---$/{c++;next} c==1 && /^model:/{print $2; exit}' "$task_file")"
   MODEL="${task_model:-$DEFAULT_MODEL}"
-  PROMPT="$(awk 'BEGIN{c=0} /^---$/{c++;next} c>=2' "$task_file")"
+  PROMPT="$TASK_RAW"
 else
   PROMPT="$TASK_RAW"
 fi
+
+PROMPT="@tasks\n\nTask from TASKS.md:\n$PROMPT"
 
 state_file="$STATE_DIR/$SLUG.md"
 if [ "$IS_RETRY" = true ] && [ -f "$state_file" ]; then
@@ -172,22 +196,23 @@ fi
 OUTPUT_FILE=$(mktemp)
 
 set -- "run" "--auto" "--format" "json" "--title" "task:$SLUG"
+[ -n "$SERVER_URL" ] && set -- "$@" "--attach" "$SERVER_URL"
+set -- "$@" "--agent" "build"
 [ -n "$MODEL" ] && set -- "$@" "--model" "$MODEL"
 if [ -n "$SESSION_ID" ]; then
   set -- "$@" "--session" "$SESSION_ID"
 else
-  set -- "$@" "-p" "$PROMPT"
+  set -- "$@" "$PROMPT"
 fi
 
-echo "Running: opencode $*"
+echo "Running: $OPENCODE_BIN $*"
 
-(cd "$PROJECT_ROOT" && opencode "$@" > "$OUTPUT_FILE" 2>&1) &
+(cd "$PROJECT_ROOT" && "$OPENCODE_BIN" "$@" > "$OUTPUT_FILE" 2>&1) &
 CHILD_PID=$!
 
-echo "pid: $CHILD_PID" > "$state_file"
+printf 'pid: %s\nstatus: running\n' "$CHILD_PID" > "$state_file"
 
-wait "$CHILD_PID" || true
-EXIT_CODE=$?
+set +e; wait "$CHILD_PID"; EXIT_CODE=$?; set -e
 
 OUTPUT="$(cat "$OUTPUT_FILE" 2>/dev/null || true)"
 SESSION_ID="$(echo "$OUTPUT" | grep -o '"sessionID":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
@@ -196,6 +221,7 @@ rm -f "$OUTPUT_FILE"
 cat > "$state_file" <<- ENDSTATE
 pid: $CHILD_PID
 session: ${SESSION_ID:-}
+status: $([ "$EXIT_CODE" = 0 ] && echo success || echo failed)
 exit_code: $EXIT_CODE
 
 output:
@@ -205,25 +231,7 @@ ENDSTATE
 # ── Handle result ─────────────────────────────────────
 
 if [ "$EXIT_CODE" = 0 ]; then
-  tmp_done=$(mktemp)
-  awk -v slug="$SLUG" '
-    /^- \[~\]/ {
-      rest = substr($0, 7)
-      link_text = ""
-      if (match(rest, /\[[^]]*\]/)) {
-        link_text = substr(rest, RSTART + 1, RLENGTH - 2)
-      }
-      raw = (link_text != "" ? link_text : rest)
-      my_slug = tolower(raw)
-      gsub(/[^a-z0-9]/, "-", my_slug)
-      gsub(/^-+|-+$/, "", my_slug)
-      my_slug = substr(my_slug, 1, 60)
-      if (my_slug == slug) { sub(/^- \[~\]/, "- [x]") }
-    }
-    { print }
-  ' "$TASKS_FILE" > "$tmp_done" && mv "$tmp_done" "$TASKS_FILE"
-  rm -f "$state_file"
-  echo "Task completed: $SLUG"
+  echo "Task finished: $SLUG (review and mark [x] when complete)"
 else
   echo "Failed (exit $EXIT_CODE). State saved."
 fi
