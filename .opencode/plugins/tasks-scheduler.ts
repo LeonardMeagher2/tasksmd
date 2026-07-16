@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process"
-import { existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs"
+import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs"
 import path from "node:path"
 import os from "node:os"
 
@@ -10,15 +10,23 @@ function slug(dir: string): string {
 }
 
 function workerCmd(dir: string): { program: string; args: string[] } {
+  const config = path.join(dir, ".tasks", "config")
+  let program = process.execPath
+  if (existsSync(config)) {
+    const line = readFileSync(config, "utf-8").split(/\r?\n/).find((item) => item.startsWith("opencode_path="))
+    if (line) program = line.slice("opencode_path=".length)
+  }
+  const worker = path.join(dir, ".opencode", "tasks", "worker.ts")
   if (os.platform() === "win32") {
+    const quote = (value: string) => value.replace(/'/g, "''")
     return {
       program: "powershell.exe",
-      args: ["-File", path.join(dir, ".opencode", "tasks", "worker.ps1")],
+      args: ["-NoProfile", "-Command", `$env:BUN_BE_BUN='1'; & '${quote(program)}' run '${quote(worker)}'`],
     }
   }
   return {
-    program: "/bin/sh",
-    args: [path.join(dir, ".opencode/tasks/worker.sh")],
+    program,
+    args: ["run", worker],
   }
 }
 
@@ -53,6 +61,11 @@ ${args}
     </array>
     <key>WorkingDirectory</key>
     <string>${dir}</string>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>BUN_BE_BUN</key>
+        <string>1</string>
+    </dict>
     <key>StartInterval</key>
     <integer>300</integer>
     <key>RunAtLoad</key>
@@ -102,6 +115,7 @@ Description=OpenCode tasks worker for ${slug(dir)}
 Type=exec
 WorkingDirectory=${dir}
 ExecStart=${exe} ${args}
+Environment=BUN_BE_BUN=1
 Restart=no
 StandardOutput=append:${log}
 StandardError=append:${log}

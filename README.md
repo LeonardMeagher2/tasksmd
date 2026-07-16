@@ -30,14 +30,11 @@ Worker (cron every 5 min):
 ```
 <project>/
 ├── .opencode/
-│   ├── skills/
-│   │   └── tasks/
-│   │       └── SKILL.md         ← teaches agent the format (/tasks)
 │   ├── plugins/
-│   │   └── tasks.ts             ← auto-installs worker via launchd on load
+│   │   ├── tasks.ts             ← installs scheduler and bundled skill
+│   │   └── skills/tasks/SKILL.md
 │   └── tasks/
-│       ├── worker.sh            ← worker for Unix/macOS (POSIX sh)
-│       └── worker.ps1           ← worker for Windows (PowerShell)
+│       └── worker.ts            ← TypeScript worker via OpenCode's Bun runtime
 ├── TASKS.md                     ← the board (project root)
 └── .tasks/
     ├── rewrite-auth.md          ← task definition (prompt, acceptance criteria)
@@ -125,7 +122,7 @@ The agent never touches `.tasks/.state/`. It only creates task definitions.
 
 ---
 
-## Worker (`.opencode/tasks/worker.sh` / `worker.ps1`)
+## Worker (`.opencode/tasks/worker.ts`)
 
 One task per tick. Called by launchd/systemd/schtasks every 5 min.
 
@@ -169,9 +166,9 @@ The worker itself never needs manual setup. Delete the plist from `~/Library/Lau
 
 ---
 
-## Skill (`/tasks`)
+## Skill (board authoring)
 
-`.opencode/skills/tasks/SKILL.md` teaches the agent:
+The plugin bundles a `tasks` skill and injects it through `config.skills.paths`:
 
 - TASKS.md is this project's task board
 - Format: frontmatter config + checkbox list
@@ -179,7 +176,6 @@ The worker itself never needs manual setup. Delete the plist from `~/Library/Lau
 - Small tasks: `- [ ] <prompt>` inline
 - Large tasks: create `.tasks/<name>.md`, link it: `- [ ] [<name>](.tasks/<name>.md)`
 - Background worker picks up `[ ]` tasks one at a time
-- Use `/tasks` to load this skill
 
 No custom tools needed. The agent uses `read`, `write`, `edit`, `patch` directly.
 
@@ -200,7 +196,6 @@ No custom tools needed. The agent uses `read`, `write`, `edit`, `patch` directly
 
 **In an opencode session:**
 ```
-/tasks
 "Add a task to implement rate limiting"
 → agent appends: - [ ] Implement rate limiting middleware
 ```

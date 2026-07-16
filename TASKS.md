@@ -5,5 +5,5 @@ max_active: 1
 
 # Tasks
 
-- [ ] Say hello
-- [ ] Create hello.md
+- [x] Say hello
+- [x] Create hello.md

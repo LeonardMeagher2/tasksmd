@@ -1,13 +1,14 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 import { execFileSync, spawn } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import path from "node:path"
 
 import { installWorker, uninstallWorker, isWorkerInstalled } from "./tasks-scheduler"
 import { tryRunTask } from "./tasks-runtime"
 
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
-const debugCache = new Map<string, boolean>()
+const bundledSkillsDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "skills")
 
 function opencodePath(): string {
   try {
@@ -19,14 +20,14 @@ function opencodePath(): string {
   }
 }
 
-function writeTaskConfig(directory: string): void {
+function writeTaskConfig(directory: string, activeServerUrl?: string): void {
   const tasksDir = path.join(directory, ".tasks")
   const binary = opencodePath()
   if (!binary) return
   const configPath = path.join(tasksDir, "config")
   const previous = existsSync(configPath) ? readFileSync(configPath, "utf-8") : ""
   const previousUrl = previous.match(/^server_url=(.*)$/m)?.[1]?.trim() || ""
-  const serverUrl = process.env.OPENCODE_TASKS_SERVER_URL?.trim() || previousUrl
+  const serverUrl = activeServerUrl || process.env.OPENCODE_TASKS_SERVER_URL?.trim() || previousUrl
   writeFileSync(
     configPath,
     `opencode_path=${binary}\nplatform=${process.platform}\n${serverUrl ? `server_url=${serverUrl}\n` : ""}`,
@@ -34,22 +35,11 @@ function writeTaskConfig(directory: string): void {
   )
 }
 
-function debug(dir: string, msg: string): void {
-  const dbgFile = path.join(dir, ".tasks", ".debug")
-  let enabled = debugCache.get(dir)
-  if (enabled === undefined) {
-    enabled = existsSync(dbgFile)
-    debugCache.set(dir, enabled)
-  }
-  if (enabled) process.stderr.write(`[tasks] ${msg}\n`)
-}
-
-export const TasksPlugin: Plugin = async ({ directory, client }) => {
-  debug(directory, "plugin loaded")
+export const TasksPlugin: Plugin = async ({ directory, client, serverUrl }) => {
   // Ensure .tasks/ has a gitignore so state and logs stay local
   const tasksDir = path.join(directory, ".tasks")
   mkdirSync(tasksDir, { recursive: true })
-  writeTaskConfig(directory)
+  writeTaskConfig(directory, serverUrl?.toString())
   const gi = path.join(tasksDir, ".gitignore")
   if (!existsSync(gi)) {
     writeFileSync(gi, "worker.log\n.state/\nconfig\n", "utf-8")
@@ -65,26 +55,33 @@ export const TasksPlugin: Plugin = async ({ directory, client }) => {
   const onFileEdited = (): void => {
     const existing = debounceTimers.get(directory)
     if (existing) clearTimeout(existing)
-    debug(directory, "file edited, debouncing 5s")
     debounceTimers.set(directory, setTimeout(async () => {
       debounceTimers.delete(directory)
       if (client) {
-        debug(directory, "attempting in-process run via ctx.client.session")
-        try { await tryRunTask(client, directory); return } catch (e) { debug(directory, `in-process run failed: ${e}`) }
+        try { await tryRunTask(client, directory); return } catch { /* fall through */ }
       }
-      debug(directory, "falling back to worker.sh spawn")
-      spawn("/bin/sh", [path.join(directory, ".opencode/tasks/worker.sh")],
-        { cwd: directory, stdio: "ignore", detached: true }).unref()
+      spawn(opencodePath(), ["run", path.join(directory, ".opencode", "tasks", "worker.ts")], {
+        cwd: directory,
+        stdio: "ignore",
+        detached: true,
+        env: { ...process.env, BUN_BE_BUN: "1" },
+      }).unref()
     }, 5000))
   }
 
   return {
-    config: (config: any) => {
+    config: (config) => {
+      config.skills ??= {}
+      config.skills.paths ??= []
+      if (!config.skills.paths.includes(bundledSkillsDir)) config.skills.paths.push(bundledSkillsDir)
       config.agent ??= {}
       config.agent["task-runner"] = {
         ...(config.agent["task-runner"] ?? {}),
         mode: "primary",
         description: "Executes TASKS.md work items without spawning subagents.",
+        prompt: `You are the project task runner.
+
+Execute the assigned task now in the current project using your tools. Do not only explain or make a plan. Do not ask normal clarification questions; choose a sensible minimal result and proceed. Inspect relevant files first. Verify the result before finishing. Do not spawn subagents. For linked tasks, read the referenced file and treat it as one task. Do not edit .tasks/.state files. After verified completion, mark the exact top-level task [x] in TASKS.md. If blocked, mark it [!] and state the blocker. Leave [~] only when work remains.`,
         permission: {
           ...(config.agent["task-runner"]?.permission ?? {}),
           task: "deny",
@@ -114,7 +111,6 @@ export const TasksPlugin: Plugin = async ({ directory, client }) => {
 
     event: async ({ event }) => {
       if (event.type === "file.edited" || event.type === "file.watcher.updated") {
-        debug(directory, `event: ${event.type}`)
         onFileEdited()
       }
     },
