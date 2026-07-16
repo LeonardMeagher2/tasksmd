@@ -1,23 +1,26 @@
 # Tasks
 
-A per-project task queue for OpenCode. The agent edits `TASKS.md` with its built-in file tools. A worker processes tasks one at a time.
+A per-project task queue for OpenCode. The agent adds tasks to `TASKS.md`. A worker processes them one at a time.
 
-No custom tools required. No daemon. Just a file, a skill, and a cron job.
+The agent only writes task definitions. The worker manages all execution state privately. No custom tools required. No daemon. Just a file, a skill, and a cron job.
 
 ---
 
 ## How it works
 
 ```
-TASKS.md     ← the board (frontmatter config + checkbox list)
-.tasks/      ← linked task files for large tasks
+TASKS.md              ← the board (agent adds tasks here)
+.tasks/<name>.md      ← task definition (prompt, acceptance criteria)
+.tasks/.state/<name>.json ← worker's private runtime state (never touched by agent)
 
 Worker (cron every 5 min):
   └─ Read TASKS.md, find first [ ] or stale [~]
-  └─ Get prompt from inline text or linked .tasks/<name>.md
+  └─ Get prompt + model from task definition
+  └─ Read .tasks/.state/<name>.json for prior context on retries
   └─ cd to worktree
   └─ opencode run --model <m> -p "<prompt>"
-  └─ Mark [ ] → [~] while running, [~] → [x] on success
+  └─ Save session ID + output summary to .tasks/.state/<name>.json
+  └─ Mark [ ] → [~] while running, [~] → [x] on success, clean up state
 ```
 
 ---
@@ -31,11 +34,14 @@ Worker (cron every 5 min):
 │   │   └── tasks/
 │   │       └── SKILL.md         ← teaches agent the format (/tasks)
 │   ├── plugins/
-│   │   └── task-queue.ts        ← optional V1 plugin
+│   │   └── task-queue.ts        ← V1 plugin (manages queue, adds tools)
 │   └── tasks/
 │       └── worker.sh            ← the worker script
 ├── TASKS.md                     ← the board (project root)
-└── .tasks/                      ← linked task files for large tasks
+└── .tasks/
+    ├── rewrite-auth.md          ← task definition (prompt, acceptance criteria)
+    └── .state/
+        └── rewrite-auth.json    ← worker's private runtime state
 ```
 
 ---
@@ -106,27 +112,52 @@ Resolution order for `model`:
 
 ---
 
+## Separation of concerns
+
+| Layer | Who writes it | Contents |
+|-------|--------------|----------|
+| **TASKS.md** | Agent (add tasks), Worker (state transitions) | Task list, frontmatter config |
+| **.tasks/\<name\>.md** | Agent (create task) | What to do, acceptance criteria |
+| **.tasks/.state/\<name\>.json** | Worker only | Whatever context the worker saves |
+
+The agent never touches `.tasks/.state/`. It only creates task definitions.
+
+---
+
 ## Worker script (`.opencode/tasks/worker.sh`)
 
 One task per tick. Called by cron every 5 minutes.
 
 ```
-1. Read TASKS.md frontmatter
-2. Prioritize stale [~] tasks first, then first [ ]
-3. If count([~]) >= max_active or no task found → exit
-4. Resolve prompt + model (inline or linked)
-5. git worktree add .worktrees/<slug> <base>
-6. Replace [ ] → [~] in TASKS.md
-7. cd .worktrees/<slug>
-8. opencode run --format json --title "task:<slug>" \
+1. Read TASKS.md frontmatter for model, max_active
+2. Prioritize stale [~] tasks first (check .state/ for prior context)
+   If none, find first [ ]
+3. If count([~]) >= max_active or no task → exit
+4. Resolve task:
+   a. Inline: prompt = line text
+   b. Linked: read .tasks/<name>.md → prompt = body, model = frontmatter or cascade
+5. If retrying (stale [~]), read .tasks/.state/<name>.json:
+     Prepend to prompt: "Previous attempt: <summary> / Error: <error> / Files: <list>"
+6. Create/verify worktree: git worktree add .worktrees/<slug> <base>
+7. Replace [ ] → [~] in TASKS.md
+8. cd .worktrees/<slug>
+9. Run: opencode run --format json --title "task:<slug>" \
      ${model:+--model "$model"} -p "$prompt"
-9. On success: [~] → [x], optionally commit worktree
-10. On failure: leave [~] — visible stuck state
+10. Capture session ID + output from JSON stream
+11. Dump whatever context the worker has into .tasks/.state/<name>.json
+12. On success: [~] → [x], remove .state/<name>.json, optionally commit worktree
+13. On failure: leave [~] — state file has context for next retry
 ```
+
+On retry, the worker reads the state file and injects whatever it has into the prompt. No fixed schema — the worker writes what it knows, reads what's there.
 
 ### Crash recovery
 
-If the worker crashes, TASKS.md is left with `[~]`. Next tick sees it, checks if the worktree exists, retries. You can also manually reset `[~]` → `[ ]` to force a fresh attempt.
+If the worker crashes mid-task:
+- TASKS.md is left with `[~]`
+- `.tasks/.state/<name>.json` has the last known state
+- Next tick sees the stale `[~]`, reads the state file, retries with context
+- You can also manually reset `[~]` → `[ ]` to force a clean retry (deletes the state file)
 
 ---
 
