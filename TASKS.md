@@ -5,5 +5,5 @@ max_active: 1
 
 # Tasks
 
-- [x] Say hello
-- [x] Create hello.md
+- [ ] [Improve project documentation](.tasks/improve-docs.md)
+- [ ] [Package plugin for npm](.tasks/package-plugin.md)
