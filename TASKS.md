@@ -5,5 +5,3 @@ max_active: 1
 
 # Tasks
 
-- [ ] [Improve project documentation](.tasks/improve-docs.md)
-- [ ] [Package plugin for npm](.tasks/package-plugin.md)
