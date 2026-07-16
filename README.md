@@ -11,15 +11,15 @@ The agent only writes task definitions. The worker manages all execution state p
 ```
 TASKS.md              ← the board (agent adds tasks here)
 .tasks/<name>.md      ← task definition (prompt, acceptance criteria)
-.tasks/.state/<name>.json ← worker's private runtime state (never touched by agent)
+.tasks/.state/<name>.md ← worker's private runtime state (never touched by agent)
 
 Worker (cron every 5 min):
   └─ Read TASKS.md, find first [ ] or stale [~]
   └─ Get prompt + model from task definition
-  └─ Read .tasks/.state/<name>.json for prior context on retries
+  └─ Read .tasks/.state/<name>.md for prior context on retries
   └─ cd to worktree
   └─ opencode run --model <m> -p "<prompt>"
-  └─ Save session ID + output summary to .tasks/.state/<name>.json
+  └─ Dump context to .tasks/.state/<name>.md
   └─ Mark [ ] → [~] while running, [~] → [x] on success, clean up state
 ```
 
@@ -41,7 +41,7 @@ Worker (cron every 5 min):
 └── .tasks/
     ├── rewrite-auth.md          ← task definition (prompt, acceptance criteria)
     └── .state/
-        └── rewrite-auth.json    ← worker's private runtime state
+        └── rewrite-auth.md      ← worker's private runtime state
 ```
 
 ---
@@ -118,7 +118,7 @@ Resolution order for `model`:
 |-------|--------------|----------|
 | **TASKS.md** | Agent (add tasks), Worker (state transitions) | Task list, frontmatter config |
 | **.tasks/\<name\>.md** | Agent (create task) | What to do, acceptance criteria |
-| **.tasks/.state/\<name\>.json** | Worker only | Whatever context the worker saves |
+| **.tasks/.state/\<name\>.md** | Worker only | Whatever context the worker saves |
 
 The agent never touches `.tasks/.state/`. It only creates task definitions.
 
@@ -136,16 +136,15 @@ One task per tick. Called by cron every 5 minutes.
 4. Resolve task:
    a. Inline: prompt = line text
    b. Linked: read .tasks/<name>.md → prompt = body, model = frontmatter or cascade
-5. If retrying (stale [~]), read .tasks/.state/<name>.json:
-     Prepend to prompt: "Previous attempt: <summary> / Error: <error> / Files: <list>"
+5. If retrying (stale [~]), read .tasks/.state/<name>.md
 6. Create/verify worktree: git worktree add .worktrees/<slug> <base>
 7. Replace [ ] → [~] in TASKS.md
 8. cd .worktrees/<slug>
 9. Run: opencode run --format json --title "task:<slug>" \
      ${model:+--model "$model"} -p "$prompt"
 10. Capture session ID + output from JSON stream
-11. Dump whatever context the worker has into .tasks/.state/<name>.json
-12. On success: [~] → [x], remove .state/<name>.json, optionally commit worktree
+11. Dump whatever context the worker has into .tasks/.state/<name>.md
+12. On success: [~] → [x], remove .state/<name>.md, optionally commit worktree
 13. On failure: leave [~] — state file has context for next retry
 ```
 
@@ -155,7 +154,7 @@ On retry, the worker reads the state file and injects whatever it has into the p
 
 If the worker crashes mid-task:
 - TASKS.md is left with `[~]`
-- `.tasks/.state/<name>.json` has the last known state
+- `.tasks/.state/<name>.md` has the last known state
 - Next tick sees the stale `[~]`, reads the state file, retries with context
 - You can also manually reset `[~]` → `[ ]` to force a clean retry (deletes the state file)
 
