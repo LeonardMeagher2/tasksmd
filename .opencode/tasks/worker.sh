@@ -36,7 +36,7 @@ get_frontmatter_body() {
 frontmatter_key() {
   awk -v k="$1" '
     BEGIN{c=0} /^---$/{c++;next}
-    c==1 && tolower($1)==tolower(k) {sub(/^[^:]*:[[:space:]]*/,""); print; exit}
+    c==1 { key=$1; sub(/:$/,"",key); if(tolower(key)==tolower(k)) {sub(/^[^:]*:[[:space:]]*/,""); print; exit} }
   ' "$TASKS_FILE"
 }
 
