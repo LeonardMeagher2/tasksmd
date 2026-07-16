@@ -79,6 +79,7 @@ $bodyLines = $bodyLines | Where-Object { $_ -ne $null }
 $TASK_IDX = -1
 $TASK_RAW = ""
 $IS_RETRY = $false
+$FOLLOW_UP = $false
 
 # Priority 1: stale [~] whose worker process is dead
 for ($i = 0; $i -lt $bodyLines.Count; $i++) {
@@ -87,9 +88,11 @@ for ($i = 0; $i -lt $bodyLines.Count; $i++) {
   if ($line -match '^- \[~\]') { $state = "active" }
   elseif ($line -match '^- \[ \]') { $state = "pending" }
   elseif ($line -match '^- \[x\]') { $state = "done" }
+  elseif ($line -match '^- \[!\]') { $state = "blocked" }
   if (-not $state) { continue }
 
   $taskRaw = $line -replace '^- \[[ ~x]\] ', ''
+  $taskRaw = $taskRaw -replace '^- \[!\] ', ''
 
   if ($state -eq "active") {
     $slug = Slugify (Extract-LinkText $taskRaw)
@@ -99,7 +102,7 @@ for ($i = 0; $i -lt $bodyLines.Count; $i++) {
       $stateContent = Get-Content $stateFile -Raw
       $stateStatus = "running"
       if ($stateContent -match '(?m)^status:\s*(\S+)') { $stateStatus = $matches[1] }
-      if ($stateStatus -eq "success") { continue }
+      if ($stateStatus -ne "running") { $FOLLOW_UP = $true }
       if ($stateStatus -eq "running" -and $stateContent -match '(?m)^pid:\s*(\d+)') {
         $existingPid = [int]$matches[1]
         if (Is-ProcessAlive $existingPid) {
@@ -167,7 +170,11 @@ if ($linkPath) {
   $PROMPT = $TASK_RAW
 }
 
-$PROMPT = "Load the tasks skill. You are assigned this task now. Execute it in the current project using your tools. Do not only explain or make a plan. Do not ask normal clarification questions; choose a sensible minimal result and proceed. Verify the result before finishing. If truly blocked, state the blocker. After verifying the work, mark this exact task [x] in TASKS.md. If blocked or incomplete, leave it [~].`n`nTask:`n$PROMPT"
+if ($FOLLOW_UP) {
+  $PROMPT = "Continue the existing task. Check what is already done. If complete, mark the exact task [x] in TASKS.md. If blocked, mark it [!] and state the blocker. Otherwise finish the remaining work now."
+} else {
+  $PROMPT = "Load the tasks skill. You are assigned this task now. Execute it in the current project using your tools. Do not only explain or make a plan. Do not ask normal clarification questions; choose a sensible minimal result and proceed. Verify the result before finishing. If truly blocked, state the blocker. After verifying the work, mark this exact task [x] in TASKS.md. If blocked, mark it [!].`n`nTask:`n$PROMPT"
+}
 
 $stateFile = Join-Path $STATE_DIR "$SLUG.md"
 if ($IS_RETRY -and (Test-Path $stateFile)) {

@@ -25,6 +25,7 @@ Checkboxes:
 | `- [ ] text` | Pending — worker will pick this up |
 | `- [~] text` | In progress — worker is running it |
 | `- [x] text` | Done |
+| `- [!] text` | Blocked — worker will not prompt it |
 
 ## Adding tasks
 
@@ -72,6 +73,6 @@ For a linked task, read the referenced task file first. It contains the full req
 - Do not ask normal clarification questions. Choose a sensible minimal result and proceed.
 - Inspect the relevant files before changing them.
 - Verify the result before finishing.
-- If you cannot finish, state the exact blocker.
+- If you cannot finish, state the exact blocker and mark the exact task `[!]`.
 - After verifying the work, mark this exact task `[x]` in `TASKS.md`.
-- If you are blocked or did not make the requested change, leave it `[~]`.
+- If incomplete but still actionable, leave it `[~]`.

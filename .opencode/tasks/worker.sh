@@ -80,6 +80,7 @@ get_frontmatter_body > "$BODY_TMP" || true
 TASK_IDX=""
 TASK_RAW=""
 IS_RETRY=false
+FOLLOW_UP=false
 line_num=0
 
 # Priority 1: stale [~] whose worker process is dead
@@ -90,12 +91,14 @@ while IFS= read -r line || [ -n "$line" ]; do
     "- [~]"*) state="active" ;;
     "- [ ]"*) state="pending" ;;
     "- [x]"*) state="done" ;;
+    "- [!]"*) state="blocked" ;;
   esac
   [ -z "$state" ] && continue
 
   raw="${line#"- [~] "}"
   [ "$raw" = "$line" ] && raw="${line#"- [ ] "}"
   [ "$raw" = "$line" ] && raw="${line#"- [x] "}"
+  [ "$raw" = "$line" ] && raw="${line#"- [!] "}"
 
   if [ "$state" = "active" ]; then
     slug="$(slugify "$(extract_link_text "$raw" || echo "$raw")")"
@@ -103,9 +106,7 @@ while IFS= read -r line || [ -n "$line" ]; do
     if [ -f "$state_file" ]; then
       status="$(sed -n 's/^status:[[:space:]]*//p' "$state_file" | head -1)"
       pid="$(sed -n 's/^pid:[[:space:]]*\([0-9]*\).*/\1/p' "$state_file")"
-      if [ "${status:-success}" = success ]; then
-        continue
-      fi
+      [ "${status:-success}" != running ] && FOLLOW_UP=true
       if [ "${status:-running}" = running ] && [ -n "$pid" ] && is_process_alive "$pid"; then
         echo "Task $slug is still running (pid $pid). Skipping."
         rm -f "$BODY_TMP"
@@ -171,10 +172,14 @@ else
   PROMPT="$TASK_RAW"
 fi
 
-PROMPT="Load the tasks skill. You are assigned this task now. Execute it in the current project using your tools. Do not only explain or make a plan. Do not ask normal clarification questions; choose a sensible minimal result and proceed. Verify the result before finishing. If truly blocked, state the blocker. After verifying the work, mark this exact task [x] in TASKS.md. If blocked or incomplete, leave it [~].
+if [ "$FOLLOW_UP" = true ]; then
+  PROMPT="Continue the existing task. Check what is already done. If complete, mark the exact task [x] in TASKS.md. If blocked, mark it [!] and state the blocker. Otherwise finish the remaining work now."
+else
+  PROMPT="Load the tasks skill. You are assigned this task now. Execute it in the current project using your tools. Do not only explain or make a plan. Do not ask normal clarification questions; choose a sensible minimal result and proceed. Verify the result before finishing. If truly blocked, state the blocker. After verifying the work, mark this exact task [x] in TASKS.md. If blocked, mark it [!].
 
 Task:
 $PROMPT"
+fi
 
 state_file="$STATE_DIR/$SLUG.md"
 if [ "$IS_RETRY" = true ] && [ -f "$state_file" ]; then
