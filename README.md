@@ -127,7 +127,7 @@ The agent never touches `.tasks/.state/`. It only creates task definitions.
 
 ## Worker (`.opencode/tasks/worker.sh` / `worker.ps1`)
 
-One task per tick. Called by cron via `bun`. Replaces the shell script — same logic, TypeScript.
+One task per tick. Called by launchd/systemd/schtasks every 5 min.
 
 ```
 1. Read TASKS.md frontmatter for model, max_active
