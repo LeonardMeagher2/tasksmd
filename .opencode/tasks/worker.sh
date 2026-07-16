@@ -52,10 +52,10 @@ if [ ! -f "$TASKS_FILE" ]; then
 fi
 
 DEFAULT_MODEL="$(frontmatter_key model || true)"
-MAX_ACTIVE="${MAX_ACTIVE:-$(frontmatter_key max_active || echo 1)}"
+MAX_ACTIVE="${MAX_ACTIVE:-$(frontmatter_key max_active || true)}"
+MAX_ACTIVE="${MAX_ACTIVE:-1}"
 
 # ── Find next task ────────────────────────────────────
-# Use temp file to avoid subshell pipe issues
 
 BODY_TMP=$(mktemp)
 get_frontmatter_body > "$BODY_TMP" || true
@@ -99,7 +99,7 @@ while IFS= read -r line || [ -n "$line" ]; do
 done < "$BODY_TMP"
 
 if [ -z "$TASK_IDX" ] && ! "$IS_RETRY"; then
-  active_count="$(grep -c '^- \[~\]' "$BODY_TMP" 2>/dev/null || echo 0)"
+  active_count="$(grep -c '^- \[~\]' "$BODY_TMP" 2>/dev/null || true)"
   if [ "$active_count" -ge "$MAX_ACTIVE" ]; then
     echo "Active tasks ($active_count) >= max_active ($MAX_ACTIVE). Exiting."
     rm -f "$BODY_TMP"
@@ -161,15 +161,17 @@ fi
 
 WORKTREE_DIR="$WORKTREE_BASE/$SLUG"
 if [ ! -d "$WORKTREE_DIR" ]; then
-  git -C "$PROJECT_ROOT" worktree add "$WORKTREE_DIR" HEAD >/dev/null 2>&1
+  if ! git -C "$PROJECT_ROOT" worktree add "$WORKTREE_DIR" HEAD >/dev/null 2>&1; then
+    echo "Failed to create worktree."
+    exit 1
+  fi
 fi
 
 # ── Mark as in-progress ───────────────────────────────
 
 if [ "$IS_RETRY" = false ]; then
   body_start="$(awk 'BEGIN{c=0} /^---$/{c++;next} c==2{print NR; exit}' "$TASKS_FILE")"
-  [ -z "$body_start" ] && body_start="$(wc -l < "$TASKS_FILE" 2>/dev/null || echo 1)"
-  body_start=$((body_start + 1))
+  body_start="${body_start:-1}"
   tmp_edit=$(mktemp)
   awk -v idx="$TASK_IDX" -v start="$body_start" '
     NR < start { print; next }
@@ -192,16 +194,16 @@ fi
 
 echo "Running: opencode $*"
 
-opencode "$@" > "$OUTPUT_FILE" 2>&1 &
+(cd "$WORKTREE_DIR" && opencode "$@" > "$OUTPUT_FILE" 2>&1) &
 CHILD_PID=$!
 
 echo "pid: $CHILD_PID" > "$state_file"
 
-wait "$CHILD_PID"
+wait "$CHILD_PID" || true
 EXIT_CODE=$?
 
-OUTPUT="$(cat "$OUTPUT_FILE")"
-SESSION_ID="$(echo "$OUTPUT" | grep -o '"sessionID":"[^"]*"' | head -1 | cut -d'"' -f4)"
+OUTPUT="$(cat "$OUTPUT_FILE" 2>/dev/null || true)"
+SESSION_ID="$(echo "$OUTPUT" | grep -o '"sessionID":"[^"]*"' | head -1 | cut -d'"' -f4 || true)"
 rm -f "$OUTPUT_FILE"
 
 cat > "$state_file" <<- ENDSTATE
@@ -221,9 +223,10 @@ if [ "$EXIT_CODE" = 0 ]; then
     /^- \[~\]/ {
       rest = substr($0, 7)
       link_text = ""
-      match(rest, /\[([^]]*)\]/, arr)
-      if (arr[1] != "") link_text = arr[1]
-      raw = link_text != "" ? link_text : rest
+      if (match(rest, /\[[^]]*\]/)) {
+        link_text = substr(rest, RSTART + 1, RLENGTH - 2)
+      }
+      raw = (link_text != "" ? link_text : rest)
       my_slug = tolower(raw)
       gsub(/[^a-z0-9]/, "-", my_slug)
       gsub(/^-+|-+$/, "", my_slug)

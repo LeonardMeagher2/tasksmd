@@ -25,8 +25,8 @@ function Extract-LinkPath($line) {
   return ""
 }
 
-function Is-ProcessAlive($pid) {
-  try { $null = Get-Process -Id $pid -ErrorAction Stop; return $true }
+function Is-ProcessAlive($targetPid) {
+  try { $null = Get-Process -Id $targetPid -ErrorAction Stop; return $true }
   catch { return $false }
 }
 
@@ -37,10 +37,10 @@ if (-not (Test-Path $TASKS_FILE)) {
   exit 0
 }
 
-$raw = Get-Content $TASKS_FILE -Raw
-$parts = $raw -split '(?m)^---\r?\n'
+$fileContent = Get-Content $TASKS_FILE -Raw
+$parts = $fileContent -split '(?m)^---\r?\n'
 $frontmatter = ""
-$body = $raw
+$body = $fileContent
 
 if ($parts.Count -ge 3) {
   $frontmatter = $parts[1]
@@ -54,40 +54,40 @@ if ($frontmatter -match '(?m)^max_active:\s*(.+)$') { $MAX_ACTIVE = [int]$matche
 
 # ── Parse body lines ───────────────────────────────────
 
-$lines = $body -split "`n"
-$lines = $lines | Where-Object { $_ -ne $null }
+$bodyLines = $body -split "`n"
+$bodyLines = $bodyLines | Where-Object { $_ -ne $null }
 $TASK_IDX = -1
 $TASK_RAW = ""
 $IS_RETRY = $false
 
 # Priority 1: stale [~] whose worker process is dead
-for ($i = 0; $i -lt $lines.Count; $i++) {
-  $line = $lines[$i]
+for ($i = 0; $i -lt $bodyLines.Count; $i++) {
+  $line = $bodyLines[$i]
   $state = ""
   if ($line -match '^- \[~\]') { $state = "active" }
   elseif ($line -match '^- \[ \]') { $state = "pending" }
   elseif ($line -match '^- \[x\]') { $state = "done" }
   if (-not $state) { continue }
 
-  $raw = $line -replace '^- \[[ ~x]\] ', ''
+  $taskRaw = $line -replace '^- \[[ ~x]\] ', ''
 
   if ($state -eq "active") {
-    $slug = Slugify (Extract-LinkText $raw)
-    if (-not $slug) { $slug = Slugify $raw }
+    $slug = Slugify (Extract-LinkText $taskRaw)
+    if (-not $slug) { $slug = Slugify $taskRaw }
     $worktreeDir = Join-Path $WORKTREE_BASE $slug
     if (Test-Path $worktreeDir) {
       $stateFile = Join-Path $STATE_DIR "$slug.md"
       if (Test-Path $stateFile) {
         $stateContent = Get-Content $stateFile -Raw
         if ($stateContent -match '(?m)^pid:\s*(\d+)') {
-          $pid = [int]$matches[1]
-          if (Is-ProcessAlive $pid) {
-            Write-Host "Task $slug is still running (pid $pid). Skipping."
+          $existingPid = [int]$matches[1]
+          if (Is-ProcessAlive $existingPid) {
+            Write-Host "Task $slug is still running (pid $existingPid). Skipping."
             exit 0
           }
         }
       }
-      $TASK_IDX = $i; $TASK_RAW = $raw; $IS_RETRY = $true
+      $TASK_IDX = $i; $TASK_RAW = $taskRaw; $IS_RETRY = $true
       break
     }
   }
@@ -95,16 +95,16 @@ for ($i = 0; $i -lt $lines.Count; $i++) {
 
 # Priority 2: first [ ] if under max_active
 if ($TASK_IDX -eq -1 -and -not $IS_RETRY) {
-  $activeCount = ($lines | Where-Object { $_ -match '^- \[~\]' }).Count
+  $activeCount = ($bodyLines | Where-Object { $_ -match '^- \[~\]' }).Count
   if ($activeCount -ge $MAX_ACTIVE) {
     Write-Host "Active tasks ($activeCount) >= max_active ($MAX_ACTIVE). Exiting."
     exit 0
   }
 
-  for ($i = 0; $i -lt $lines.Count; $i++) {
-    if ($lines[$i] -match '^- \[ \]') {
+  for ($i = 0; $i -lt $bodyLines.Count; $i++) {
+    if ($bodyLines[$i] -match '^- \[ \]') {
       $TASK_IDX = $i
-      $TASK_RAW = $lines[$i] -replace '^- \[ \] ', ''
+      $TASK_RAW = $bodyLines[$i] -replace '^- \[ \] ', ''
       break
     }
   }
@@ -164,14 +164,14 @@ if (-not (Test-Path $WORKTREE_DIR)) {
 # ── Mark as in-progress ───────────────────────────────
 
 if (-not $IS_RETRY) {
-  $frontmatterEnd = 0
+  $bodyLineStart = 0
   if ($parts.Count -ge 3) {
-    $frontmatterEnd = ($parts[0] + "---" + $parts[1] + "---").Length
+    $bodyLineStart = $parts[0].Length + 3 + $parts[1].Length + 3
   }
-  $lines[$TASK_IDX] = $lines[$TASK_IDX] -replace '- \[ \]', '- [~]'
-  $newBody = $lines -join "`n"
-  $newContent = $raw.Substring(0, $frontmatterEnd) + $newBody
-  Set-Content -Path $TASKS_FILE -Value $newContent -NoNewline
+  $bodyLines[$TASK_IDX] = $bodyLines[$TASK_IDX] -replace '- \[ \]', '- [~]'
+  $newBody = $bodyLines -join "`n"
+  $newContent = $fileContent.Substring(0, $bodyLineStart) + $newBody
+  [System.IO.File]::WriteAllText($TASKS_FILE, $newContent)
 }
 
 # ── Run opencode ──────────────────────────────────────
@@ -195,7 +195,6 @@ Write-Host "Running: opencode $($psi.Arguments)"
 $process = [System.Diagnostics.Process]::Start($psi)
 $CHILD_PID = $process.Id
 
-# Write PID to state immediately (survives crashes)
 Set-Content -Path $stateFile -Value "pid: $CHILD_PID"
 
 $process.WaitForExit()
