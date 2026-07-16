@@ -34,9 +34,9 @@ Worker (cron every 5 min):
 │   │   └── tasks/
 │   │       └── SKILL.md         ← teaches agent the format (/tasks)
 │   ├── plugins/
-│   │   └── task-queue.ts        ← V1 plugin (adds queue_task + tasks tools)
+│   │   └── tasks.ts             ← auto-installs worker via launchd on load
 │   └── tasks/
-│       └── worker.ts            ← the worker (called by cron via `bun`)
+│       └── worker.ts            ← the worker (called by launchd every 5 min)
 ├── TASKS.md                     ← the board (project root)
 └── .tasks/
     ├── rewrite-auth.md          ← task definition (prompt, acceptance criteria)
@@ -160,17 +160,11 @@ If the worker crashes mid-task:
 
 ---
 
-## Cron job
+## Worker setup
 
-```bash
-schedule_job \
-  --name "task-worker" \
-  --schedule "*/5 * * * *" \
-  --command "bun run .opencode/tasks/worker.ts" \
-  --workdir "/path/to/project"
-```
+When the plugin loads (on any opencode session in this project), it checks if a launchd plist exists for this project's worker. If not, it installs one — scheduling the worker to run every 5 minutes.
 
-One per project that opts in.
+The worker itself never needs manual setup. Delete the plist from `~/Library/LaunchAgents/` to reset.
 
 ---
 
@@ -190,16 +184,14 @@ No custom tools needed. The agent uses `read`, `write`, `edit`, `patch` directly
 
 ---
 
-## V1 Plugin
+## Plugin
 
-`.opencode/plugins/task-queue.ts`. Adds two tools available in any opencode session:
+`.opencode/plugins/tasks.ts`. On load, auto-installs the launchd job for the worker (every 5 min). Also exposes tools for manual management:
 
 | Tool | Purpose |
 |------|---------|
-| `queue_task` | Add a task to TASKS.md (supports inline or linked file) |
-| `tasks` | Show current board status (pending / active / done counts) |
-
-Not required for the core flow (the agent can edit TASKS.md directly), but provides validation and convenience.
+| `start_tasks_worker` | Install or reinstall the launchd job (unloads first, then installs fresh) |
+| `stop_tasks_worker` | Unload and remove the launchd plist |
 
 ---
 
