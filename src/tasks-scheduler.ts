@@ -12,7 +12,9 @@ function slug(dir: string): string {
 
 function workerCmd(dir: string): { program: string; args: string[] } {
   const program = process.execPath
-  const worker = path.join(dir, ".opencode", "tasks", "worker.ts")
+  const worker = existsSync(path.join(dir, ".opencode", "tasks", "worker.js"))
+    ? path.join(dir, ".opencode", "tasks", "worker.js")
+    : path.join(dir, ".opencode", "tasks", "worker.ts")
   if (os.platform() === "win32") {
     const quote = (value: string) => value.replace(/'/g, "''")
     return {

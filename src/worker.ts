@@ -3,12 +3,10 @@ import { spawn } from "node:child_process"
 import os from "node:os"
 import path from "node:path"
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
-import { taskStateDir, taskStateFile } from "../plugins/tasks-state"
+import { frontmatterData, mergeFrontmatter, modelValue, permissionRules, taskPermissions } from "./task-config"
+import { taskStateDir, taskStateFile } from "./tasks-state"
 
-const yamlModule = "yaml"
-const { parse: parseYaml } = await import(yamlModule)
-
-const projectRoot = path.resolve(import.meta.dir, "../..")
+const projectRoot = path.resolve(process.cwd())
 const tasksFile = path.join(projectRoot, "TASKS.md")
 const stateDir = taskStateDir(projectRoot)
 
@@ -25,62 +23,6 @@ function slugify(value: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 60)
-}
-
-function frontmatter(content: string, key: string): string {
-  const value = frontmatterData(content)[key]
-  return typeof value === "string" || typeof value === "number" ? String(value) : ""
-}
-
-function frontmatterData(content: string): Record<string, unknown> {
-  try {
-    const parts = content.split(/^---\s*$/m)
-    return (parts.length >= 3 ? parseYaml(parts[1]) : {}) ?? {}
-  } catch {
-    return {}
-  }
-}
-
-function taskPermissions(data: Record<string, unknown>): Record<string, unknown> {
-  const permission = data.permission
-  if (!permission || typeof permission !== "object" || Array.isArray(permission)) return {}
-  const valid = (value: unknown) => value === "allow" || value === "ask" || value === "deny"
-  return Object.fromEntries(Object.entries(permission).flatMap(([name, value]) => {
-    if (valid(value)) return [[name, value]]
-    if (value && typeof value === "object" && !Array.isArray(value)) {
-      const rules = Object.fromEntries(Object.entries(value).filter(([, action]) => valid(action)))
-      return Object.keys(rules).length ? [[name, rules]] : []
-    }
-    return []
-  }))
-}
-
-function mergeFrontmatter(
-  base: Record<string, unknown>,
-  override: Record<string, unknown>,
-): Record<string, unknown> {
-  const merge = (left: unknown, right: unknown): unknown => {
-    if (
-      left && typeof left === "object" && !Array.isArray(left) &&
-      right && typeof right === "object" && !Array.isArray(right)
-    ) {
-      const result = { ...(left as Record<string, unknown>) }
-      for (const [key, value] of Object.entries(right)) result[key] = merge(result[key], value)
-      return result
-    }
-    return right
-  }
-  return merge(base, override) as Record<string, unknown>
-}
-
-function permissionRules(permissions: Record<string, unknown>): Array<Record<string, string>> {
-  return Object.entries(permissions).flatMap(([permission, value]) => {
-    if (typeof value === "string") return [{ permission, pattern: "*", action: value }]
-    if (value && typeof value === "object") {
-      return Object.entries(value).map(([pattern, action]) => ({ permission, pattern, action: String(action) }))
-    }
-    return []
-  })
 }
 
 function readState(file: string): RuntimeState {
@@ -168,12 +110,6 @@ function linkPath(raw: string): string {
   return raw.match(/\[[^\]]+\]\(([^)]+)\)/)?.[1] || ""
 }
 
-function modelValue(value: string): { providerID: string; modelID: string } | undefined {
-  const separator = value.indexOf("/")
-  if (separator <= 0) return undefined
-  return { providerID: value.slice(0, separator), modelID: value.slice(separator + 1) }
-}
-
 async function runAttached(
   server: ServerConnection,
   stateFile: string,
@@ -252,7 +188,7 @@ function findTask(content: string): SelectedTask | undefined {
     }
   }
 
-  const limit = Number(frontmatter(content, "max_active") || 1)
+  const limit = Number(frontmatterData(content).max_active || 1)
   if (activeCount >= limit) return undefined
   for (let i = 0; i < lines.length; i++) {
     const parsed = taskLine(lines[i])

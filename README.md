@@ -2,6 +2,18 @@
 
 OpenCode Tasks gives your project a simple work queue. Add work to `TASKS.md`, and OpenCode works through it in the background.
 
+## Install
+
+Add the plugin to your OpenCode config:
+
+```json
+{
+  "plugin": ["opencode-tasks"]
+}
+```
+
+Restart OpenCode. The plugin installs the background worker for the project.
+
 ## Why Use It
 
 - Keep work in the project, next to the code.
