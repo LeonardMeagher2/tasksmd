@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "opencode-tasks",
+  "name": "@leonardmeagher2/opencode-tasks",
   "version": "0.1.0",
   "description": "Background task queue for OpenCode projects",
   "author": {
