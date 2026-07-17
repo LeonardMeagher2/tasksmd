@@ -1,6 +1,6 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 import { execFileSync, spawn } from "node:child_process"
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs"
+import { copyFileSync, existsSync, mkdirSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 
@@ -32,13 +32,12 @@ function installWorkerAsset(directory: string): void {
   copyFileSync(bundledWorker, target)
 }
 
-function schedulerDisabled(directory: string): boolean {
-  const tasksFile = path.join(directory, "TASKS.md")
-  return existsSync(tasksFile) && /^scheduler:\s*false\s*$/im.test(readFileSync(tasksFile, "utf-8"))
+function hasTasksFile(directory: string): boolean {
+  return existsSync(path.join(directory, "TASKS.md"))
 }
 
 export const TasksPlugin: Plugin = async ({ directory, client }) => {
-  const schedulerEnabled = !schedulerDisabled(directory)
+  const schedulerEnabled = hasTasksFile(directory)
   installWorkerAsset(directory)
   if (schedulerEnabled && !isWorkerInstalled(directory)) {
     installWorker(directory)
