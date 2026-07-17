@@ -1,7 +1,8 @@
 import { execSync } from "node:child_process"
-import { existsSync, mkdirSync, readFileSync, writeFileSync, rmSync } from "node:fs"
+import { existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs"
 import path from "node:path"
 import os from "node:os"
+import { taskLogFile } from "./tasks-state"
 
 type Platform = "darwin" | "linux" | "win32"
 
@@ -10,12 +11,7 @@ function slug(dir: string): string {
 }
 
 function workerCmd(dir: string): { program: string; args: string[] } {
-  const config = path.join(dir, ".tasks", "config")
-  let program = process.execPath
-  if (existsSync(config)) {
-    const line = readFileSync(config, "utf-8").split(/\r?\n/).find((item) => item.startsWith("opencode_path="))
-    if (line) program = line.slice("opencode_path=".length)
-  }
+  const program = process.execPath
   const worker = path.join(dir, ".opencode", "tasks", "worker.ts")
   if (os.platform() === "win32") {
     const quote = (value: string) => value.replace(/'/g, "''")
@@ -41,9 +37,10 @@ function plistPath(dir: string): string {
 function installLaunchd(dir: string): string {
   const plist = plistPath(dir)
   const cmd = workerCmd(dir)
-  const log = path.join(dir, ".tasks", "worker.log")
+  const log = taskLogFile(dir)
 
   mkdirSync(path.dirname(plist), { recursive: true })
+  mkdirSync(path.dirname(log), { recursive: true })
 
   const args = [cmd.program, ...cmd.args].map((a) =>
     `        <string>${a}</string>`
@@ -104,9 +101,10 @@ function installSystemd(dir: string): string {
   const cmd = workerCmd(dir)
   const exe = cmd.program
   const args = cmd.args.join(" ")
-  const log = path.join(dir, ".tasks", "worker.log")
+  const log = taskLogFile(dir)
 
   mkdirSync(sdDir, { recursive: true })
+  mkdirSync(path.dirname(log), { recursive: true })
 
   const service = `[Unit]
 Description=OpenCode tasks worker for ${slug(dir)}

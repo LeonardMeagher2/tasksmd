@@ -15,8 +15,12 @@ Frontmatter for config:
 ---
 model: unsloth/Qwen3.5-9B-GGUF:Q4_K_M
 max_active: 1
+permission:
+  bash: deny
 ---
 ```
+
+Task permissions can use `allow`, `ask`, or `deny`.
 
 Checkboxes:
 
@@ -35,10 +39,10 @@ Small tasks go inline:
 - [ ] Implement rate limiting middleware
 ```
 
-Large tasks get their own file in `.tasks/` and linked from the board:
+Large tasks get their own file anywhere in the project and linked from the board:
 
 ```
-- [ ] [Rewrite auth system](.tasks/rewrite-auth.md)
+- [ ] [Rewrite auth system](docs/rewrite-auth.md)
 ```
 
 The linked file has frontmatter (optional `model` override) and the full prompt as body:
@@ -58,5 +62,5 @@ Acceptance criteria:
 ## Rules
 
 - Only add tasks to TASKS.md (append `- [ ]` lines)
-- Do not edit `.tasks/.state/` files — those are the worker's private state
-- Do not modify `[~]` or `[x]` markers — the worker handles those
+- Worker state lives outside the project.
+- Worker-managed markers describe execution status.

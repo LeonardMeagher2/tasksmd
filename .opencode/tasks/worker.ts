@@ -3,14 +3,17 @@ import { spawn } from "node:child_process"
 import os from "node:os"
 import path from "node:path"
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
+import { taskStateDir, taskStateFile } from "../plugins/tasks-state"
+
+const yamlModule = "yaml"
+const { parse: parseYaml } = await import(yamlModule)
 
 const projectRoot = path.resolve(import.meta.dir, "../..")
 const tasksFile = path.join(projectRoot, "TASKS.md")
-const tasksDir = path.join(projectRoot, ".tasks")
-const stateDir = path.join(tasksDir, ".state")
-const configFile = path.join(tasksDir, "config")
+const stateDir = taskStateDir(projectRoot)
 
 type TaskState = "pending" | "active" | "done" | "blocked"
+type RuntimeState = { pid?: number; session?: string; status?: string; exit_code?: number; output?: string }
 
 function log(message: string): void {
   console.log(`[tasks ${new Date().toISOString()}] ${message}`)
@@ -25,25 +28,67 @@ function slugify(value: string): string {
 }
 
 function frontmatter(content: string, key: string): string {
-  let section = false
-  for (const line of content.split(/\r?\n/)) {
-    if (line.trim() === "---") {
-      section = !section
-      continue
-    }
-    if (section && line.toLowerCase().startsWith(`${key.toLowerCase()}:`)) {
-      return line.slice(line.indexOf(":") + 1).trim()
-    }
-  }
-  return ""
+  const value = frontmatterData(content)[key]
+  return typeof value === "string" || typeof value === "number" ? String(value) : ""
 }
 
-function configValue(key: string): string {
-  if (!existsSync(configFile)) return ""
-  const line = readFileSync(configFile, "utf-8")
-    .split(/\r?\n/)
-    .find((item) => item.startsWith(`${key}=`))
-  return line?.slice(key.length + 1).trim() ?? ""
+function frontmatterData(content: string): Record<string, unknown> {
+  try {
+    const parts = content.split(/^---\s*$/m)
+    return (parts.length >= 3 ? parseYaml(parts[1]) : {}) ?? {}
+  } catch {
+    return {}
+  }
+}
+
+function taskPermissions(data: Record<string, unknown>): Record<string, unknown> {
+  const permission = data.permission
+  if (!permission || typeof permission !== "object" || Array.isArray(permission)) return {}
+  const valid = (value: unknown) => value === "allow" || value === "ask" || value === "deny"
+  return Object.fromEntries(Object.entries(permission).flatMap(([name, value]) => {
+    if (valid(value)) return [[name, value]]
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      const rules = Object.fromEntries(Object.entries(value).filter(([, action]) => valid(action)))
+      return Object.keys(rules).length ? [[name, rules]] : []
+    }
+    return []
+  }))
+}
+
+function mergeFrontmatter(
+  base: Record<string, unknown>,
+  override: Record<string, unknown>,
+): Record<string, unknown> {
+  const merge = (left: unknown, right: unknown): unknown => {
+    if (
+      left && typeof left === "object" && !Array.isArray(left) &&
+      right && typeof right === "object" && !Array.isArray(right)
+    ) {
+      const result = { ...(left as Record<string, unknown>) }
+      for (const [key, value] of Object.entries(right)) result[key] = merge(result[key], value)
+      return result
+    }
+    return right
+  }
+  return merge(base, override) as Record<string, unknown>
+}
+
+function permissionRules(permissions: Record<string, unknown>): Array<Record<string, string>> {
+  return Object.entries(permissions).flatMap(([permission, value]) => {
+    if (typeof value === "string") return [{ permission, pattern: "*", action: value }]
+    if (value && typeof value === "object") {
+      return Object.entries(value).map(([pattern, action]) => ({ permission, pattern, action: String(action) }))
+    }
+    return []
+  })
+}
+
+function readState(file: string): RuntimeState {
+  try { return JSON.parse(readFileSync(file, "utf-8")) as RuntimeState } catch { return {} }
+}
+
+function writeState(file: string, state: RuntimeState): void {
+  writeFileSync(file, `${JSON.stringify(state, null, 2)}\n`)
 }
 
 type ServerConnection = { url: string; headers?: Record<string, string>; password?: string }
@@ -59,7 +104,7 @@ async function healthyServer(connection: ServerConnection): Promise<boolean> {
 }
 
 async function findServer(): Promise<ServerConnection | undefined> {
-  const explicit = process.env.OPENCODE_TASKS_SERVER_URL || configValue("server_url")
+  const explicit = process.env.OPENCODE_TASKS_SERVER_URL
   if (explicit) {
     const connection = { url: explicit }
     if (await healthyServer(connection)) return connection
@@ -107,13 +152,13 @@ function alive(pid: number): boolean {
 }
 
 function taskLine(line: string): { state: TaskState; raw: string } | undefined {
-  const match = line.match(/^- \[([ ~x!])\] (.*)$/)
+  const match = line.match(/^- \[([ ~x!✓])\] (.*)$/)
   if (!match) return undefined
   const state = match[1] === " "
     ? "pending"
     : match[1] === "~"
       ? "active"
-      : match[1] === "x"
+      : match[1] === "x" || match[1] === "✓"
         ? "done"
         : "blocked"
   return { state, raw: match[2] }
@@ -121,6 +166,51 @@ function taskLine(line: string): { state: TaskState; raw: string } | undefined {
 
 function linkPath(raw: string): string {
   return raw.match(/\[[^\]]+\]\(([^)]+)\)/)?.[1] || ""
+}
+
+function modelValue(value: string): { providerID: string; modelID: string } | undefined {
+  const separator = value.indexOf("/")
+  if (separator <= 0) return undefined
+  return { providerID: value.slice(0, separator), modelID: value.slice(separator + 1) }
+}
+
+async function runAttached(
+  server: ServerConnection,
+  stateFile: string,
+  slug: string,
+  sessionId: string,
+  model: string,
+  prompt: string,
+  permissions: Record<string, unknown>,
+): Promise<{ session: string; output: string }> {
+  const client = createOpencodeClient({
+    baseUrl: server.url,
+    headers: server.headers,
+    directory: projectRoot,
+  }) as any
+  const selectedModel = modelValue(model)
+  let id = sessionId
+
+  if (!id) {
+    const created = await client.session.create({
+      title: `task:${slug}`,
+      agent: "task-runner",
+      model: selectedModel ? { providerID: selectedModel.providerID, id: selectedModel.modelID } : undefined,
+      permission: permissionRules(permissions),
+    })
+    id = created.data?.id || created.id || ""
+  }
+  if (!id) throw new Error("OpenCode did not return a session ID")
+
+  writeState(stateFile, { pid: process.pid, session: id, status: "running" })
+  const result = await client.session.prompt({
+    sessionID: id,
+    agent: "task-runner",
+    model: selectedModel,
+    parts: [{ type: "text", text: prompt }],
+  })
+  if (result.error) throw new Error(JSON.stringify(result.error))
+  return { session: id, output: JSON.stringify(result.data ?? result) }
 }
 
 type SelectedTask = {
@@ -141,13 +231,13 @@ function findTask(content: string): SelectedTask | undefined {
     if (parsed.state === "active") {
       activeCount++
       const slug = slugify(parsed.raw.match(/\[([^\]]+)\]\(/)?.[1] || parsed.raw)
-      const stateFile = path.join(stateDir, `${slug}.md`)
+      const stateFile = taskStateFile(projectRoot, slug)
       if (!existsSync(stateFile)) {
         return { line: i, raw: parsed.raw, retry: true, followUp: false, session: "" }
       }
-      const state = readFileSync(stateFile, "utf-8")
-      const status = state.match(/^status:\s*(\S+)/m)?.[1] || "success"
-      const pid = Number(state.match(/^pid:\s*(\d+)/m)?.[1] || 0)
+      const state = readState(stateFile)
+      const status = state.status || "success"
+      const pid = state.pid || 0
       if (status === "running" && pid && alive(pid)) {
         log(`task=${slug} status=running pid=${pid} action=skip`)
         return undefined
@@ -157,7 +247,7 @@ function findTask(content: string): SelectedTask | undefined {
         raw: parsed.raw,
         retry: true,
         followUp: true,
-        session: state.match(/^session:\s*(\S+)/m)?.[1] || "",
+        session: state.session || "",
       }
     }
   }
@@ -187,14 +277,14 @@ async function main(): Promise<void> {
   }
 
   const slug = slugify(selected.raw.match(/\[([^\]]+)\]\(/)?.[1] || selected.raw)
-  const stateFile = path.join(stateDir, `${slug}.md`)
+  const stateFile = taskStateFile(projectRoot, slug)
   const lines = original.split(/\r?\n/)
   if (!selected.retry) {
     lines[selected.line] = lines[selected.line].replace("- [ ]", "- [~]")
     writeFileSync(tasksFile, `${lines.join("\n")}\n`)
   }
 
-  let model = frontmatter(original, "model")
+  let taskConfig = frontmatterData(original)
   const linked = linkPath(selected.raw)
   if (linked) {
     const linkedFile = path.join(projectRoot, linked)
@@ -203,17 +293,19 @@ async function main(): Promise<void> {
       writeFileSync(tasksFile, `${lines.join("\n")}\n`)
       throw new Error(`Linked task file not found: ${linked}`)
     }
-    model = frontmatter(readFileSync(linkedFile, "utf-8"), "model") || model
+    const linkedContent = readFileSync(linkedFile, "utf-8")
+    taskConfig = mergeFrontmatter(taskConfig, frontmatterData(linkedContent))
   }
+  const model = typeof taskConfig.model === "string" ? taskConfig.model : ""
+  const taskPermissionRules = taskPermissions(taskConfig)
 
   const prompt = selected.followUp
     ? "Continue the existing task. Check what is already done. If complete, mark the exact top-level task [x] in TASKS.md. If blocked, mark it [!] and state the blocker. Otherwise finish the remaining work now."
     : selected.raw
 
-  const opencode = configValue("opencode_path") || process.execPath
+  const opencode = process.execPath
   const args = [
     "run",
-    "--auto",
     "--format",
     "json",
     "--title",
@@ -231,28 +323,47 @@ async function main(): Promise<void> {
   log(`task=${slug} retry=${selected.retry} follow_up=${selected.followUp}`)
   log(`task=${slug} action=start binary=${opencode}`)
 
-  const output: Buffer[] = []
-  const child = spawn(opencode, args, {
-    cwd: projectRoot,
-    env: { ...process.env, BUN_BE_BUN: undefined },
-    stdio: ["pipe", "pipe", "pipe"],
-  })
-  child.stdout.on("data", (data) => output.push(Buffer.from(data)))
-  child.stderr.on("data", (data) => output.push(Buffer.from(data)))
-  writeFileSync(stateFile, `pid: ${child.pid}\nstatus: running\n`)
-  child.stdin.write(prompt)
-  child.stdin.end()
+  let exitCode = 0
+  let session = selected.session
+  let text = ""
+  let workerPid = process.pid
+  if (server) {
+    try {
+      const result = await runAttached(server, stateFile, slug, selected.session, model, prompt, taskPermissionRules)
+      session = result.session
+      text = result.output
+    } catch (error) {
+      exitCode = 1
+      text = error instanceof Error ? error.message : String(error)
+    }
+  } else {
+    const output: Buffer[] = []
+    const child = spawn(opencode, args, {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        BUN_BE_BUN: undefined,
+        ...(Object.keys(taskPermissionRules).length
+          ? { OPENCODE_PERMISSION: JSON.stringify(taskPermissionRules) }
+          : {}),
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+    })
+    child.stdout.on("data", (data) => output.push(Buffer.from(data)))
+    child.stderr.on("data", (data) => output.push(Buffer.from(data)))
+    workerPid = child.pid ?? process.pid
+    writeState(stateFile, { pid: child.pid ?? process.pid, status: "running" })
+    child.stdin.write(prompt)
+    child.stdin.end()
+    exitCode = await new Promise<number>((resolve) => {
+      child.on("close", (code) => resolve(code ?? 1))
+    })
+    text = Buffer.concat(output).toString("utf-8")
+    session = text.match(/"sessionID":"([^"]+)"/)?.[1] || selected.session
+  }
 
-  const exitCode = await new Promise<number>((resolve) => {
-    child.on("close", (code) => resolve(code ?? 1))
-  })
-  const text = Buffer.concat(output).toString("utf-8")
-  const session = text.match(/"sessionID":"([^"]+)"/)?.[1] || selected.session
   const status = exitCode === 0 ? "success" : "failed"
-  writeFileSync(
-    stateFile,
-    `pid: ${child.pid}\nsession: ${session}\nstatus: ${status}\nexit_code: ${exitCode}\n\noutput:\n${text.slice(0, 2000)}`,
-  )
+  writeState(stateFile, { pid: workerPid, session, status, exit_code: exitCode, output: text.slice(0, 2000) })
   log(`task=${slug} status=${status} exit_code=${exitCode} session=${session || "none"}`)
   process.exitCode = exitCode
 }
