@@ -1,48 +1,57 @@
-import { execSync } from "node:child_process"
+import { spawn } from "node:child_process"
 import { existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs"
 import path from "node:path"
 import os from "node:os"
-import { taskLogFile } from "./tasks-state"
+
+function run(cmd: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("cmd.exe", ["/c", cmd], { windowsHide: true, stdio: "ignore" })
+    child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Exit code ${code}: ${cmd}`)))
+    child.on("error", reject)
+  })
+}
 
 type Platform = "darwin" | "linux" | "win32"
+const platform: Platform = os.platform() as Platform
 
-function slug(dir: string): string {
+function dirSlug(dir: string): string {
   return dir.replace(/[^a-zA-Z0-9]/g, "-").replace(/^-+|-+$/g, "").toLowerCase()
 }
 
-function workerCmd(dir: string): { program: string; args: string[] } {
+function workerCmd(dir: string, taskSlug?: string): { program: string; args: string[] } {
   const program = process.execPath
   const worker = existsSync(path.join(dir, ".opencode", "tasks", "worker.js"))
     ? path.join(dir, ".opencode", "tasks", "worker.js")
     : path.join(dir, ".opencode", "tasks", "worker.ts")
-  if (os.platform() === "win32") {
-    const quote = (value: string) => value.replace(/'/g, "''")
-    return {
-      program: "powershell.exe",
-      args: ["-NoProfile", "-Command", `$env:BUN_BE_BUN='1'; & '${quote(program)}' run '${quote(worker)}'`],
-    }
-  }
+  const extra = taskSlug ? ["--task", taskSlug] : []
   return {
     program,
-    args: ["run", worker],
+    args: ["run", worker, ...extra],
   }
 }
 
-function label(dir: string): string {
-  return `com.opencode.tasks.worker.${slug(dir)}`
+function winWorkerWrapper(dir: string, taskSlug?: string): string {
+  const cmd = workerCmd(dir, taskSlug)
+  const lines = [`@set BUN_BE_BUN=1`, `@"${cmd.program}" ${cmd.args.map(a => `"${a}"`).join(" ")}`]
+  const slugPart = taskSlug ? `-${taskSlug}` : ""
+  const wrapperPath = path.join(dir, ".opencode", "tasks", `worker${slugPart}.cmd`)
+  writeFileSync(wrapperPath, lines.join("\r\n"), "utf-8")
+  return wrapperPath
 }
 
-function plistPath(dir: string): string {
-  return path.join(os.homedir(), "Library", "LaunchAgents", `${label(dir)}.plist`)
+function taskLabel(dir: string, slug: string): string {
+  return `com.opencode.tasks.worker.${dirSlug(dir)}${slug ? "." + slug : ""}`
 }
 
-function installLaunchd(dir: string): string {
-  const plist = plistPath(dir)
-  const cmd = workerCmd(dir)
-  const log = taskLogFile(dir)
+function taskPlistPath(dir: string, slug: string): string {
+  return path.join(os.homedir(), "Library", "LaunchAgents", `${taskLabel(dir, slug)}.plist`)
+}
+
+async function installTaskLaunchd(dir: string, slug: string, interval: number): Promise<string> {
+  const plist = taskPlistPath(dir, slug)
+  const cmd = workerCmd(dir, slug)
 
   mkdirSync(path.dirname(plist), { recursive: true })
-  mkdirSync(path.dirname(log), { recursive: true })
 
   const args = [cmd.program, ...cmd.args].map((a) =>
     `        <string>${a}</string>`
@@ -53,7 +62,7 @@ function installLaunchd(dir: string): string {
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>${label(dir)}</string>
+    <string>${taskLabel(dir, slug)}</string>
     <key>ProgramArguments</key>
     <array>
 ${args}
@@ -66,50 +75,41 @@ ${args}
         <string>1</string>
     </dict>
     <key>StartInterval</key>
-    <integer>300</integer>
+    <integer>${interval}</integer>
     <key>RunAtLoad</key>
     <true/>
-    <key>StandardOutPath</key>
-    <string>${log}</string>
-    <key>StandardErrorPath</key>
-    <string>${log}</string>
 </dict>
 </plist>`
 
   writeFileSync(plist, content, "utf-8")
-  execSync(`launchctl load ${plist}`)
-  return `Worker installed (launchd): ${label(dir)}`
+  await run(`launchctl load ${plist}`)
+  return `Task worker installed (launchd): ${taskLabel(dir, slug)}`
 }
 
-function uninstallLaunchd(dir: string): string {
-  const plist = plistPath(dir)
-  if (!existsSync(plist)) return "No worker plist found."
-  try { execSync(`launchctl unload ${plist}`, { stdio: "pipe" }) } catch { /* ok */ }
+async function uninstallTaskLaunchd(dir: string, slug: string): Promise<string> {
+  const plist = taskPlistPath(dir, slug)
+  if (!existsSync(plist)) return `No worker plist found for ${slug}.`
+  try { await run(`launchctl unload ${plist}`) } catch { /* ok */ }
   rmSync(plist, { force: true })
-  return `Worker removed (launchd): ${label(dir)}`
+  return `Task worker removed (launchd): ${taskLabel(dir, slug)}`
 }
 
-function systemdDir(): string {
-  return path.join(os.homedir(), ".config", "systemd", "user")
+function taskServiceName(dir: string, slug: string): string {
+  return `opencode-tasks-${dirSlug(dir)}${slug ? "-" + slug : ""}`
 }
 
-function serviceName(dir: string): string {
-  return `opencode-tasks-${slug(dir)}`
-}
-
-function installSystemd(dir: string): string {
-  const sdDir = systemdDir()
-  const name = serviceName(dir)
-  const cmd = workerCmd(dir)
+async function installTaskSystemd(dir: string, slug: string, interval: number): Promise<string> {
+  const sdDir = path.join(os.homedir(), ".config", "systemd", "user")
+  const name = taskServiceName(dir, slug)
+  const cmd = workerCmd(dir, slug)
   const exe = cmd.program
   const args = cmd.args.join(" ")
-  const log = taskLogFile(dir)
+  const intervalSec = `${interval}sec`
 
   mkdirSync(sdDir, { recursive: true })
-  mkdirSync(path.dirname(log), { recursive: true })
 
   const service = `[Unit]
-Description=OpenCode tasks worker for ${slug(dir)}
+Description=OpenCode task worker for ${slug} in ${dirSlug(dir)}
 
 [Service]
 Type=exec
@@ -117,16 +117,14 @@ WorkingDirectory=${dir}
 ExecStart=${exe} ${args}
 Environment=BUN_BE_BUN=1
 Restart=no
-StandardOutput=append:${log}
-StandardError=append:${log}
 `
 
   const timer = `[Unit]
-Description=OpenCode tasks worker timer for ${slug(dir)}
+Description=OpenCode task worker timer for ${slug} in ${dirSlug(dir)}
 
 [Timer]
 OnBootSec=1min
-OnUnitActiveSec=5min
+OnUnitActiveSec=${intervalSec}
 Persistent=true
 
 [Install]
@@ -135,79 +133,108 @@ WantedBy=timers.target
 
   writeFileSync(path.join(sdDir, `${name}.service`), service, "utf-8")
   writeFileSync(path.join(sdDir, `${name}.timer`), timer, "utf-8")
-  execSync(`systemctl --user daemon-reload`, { stdio: "pipe" })
-  execSync(`systemctl --user enable ${name}.timer`, { stdio: "pipe" })
-  execSync(`systemctl --user start ${name}.timer`, { stdio: "pipe" })
+  await run(`systemctl --user daemon-reload`)
+  await run(`systemctl --user enable ${name}.timer`)
+  await run(`systemctl --user start ${name}.timer`)
 
-  return `Worker installed (systemd): ${name}`
+  return `Task worker installed (systemd): ${name}`
 }
 
-function uninstallSystemd(dir: string): string {
-  const name = serviceName(dir)
-  const sdDir = systemdDir()
+async function uninstallTaskSystemd(dir: string, slug: string): Promise<string> {
+  const name = taskServiceName(dir, slug)
+  const sdDir = path.join(os.homedir(), ".config", "systemd", "user")
 
-  try { execSync(`systemctl --user stop ${name}.timer 2>/dev/null`, { stdio: "pipe" }) } catch { /* ok */ }
-  try { execSync(`systemctl --user disable ${name}.timer 2>/dev/null`, { stdio: "pipe" }) } catch { /* ok */ }
+  try { await run(`systemctl --user stop ${name}.timer 2>/dev/null`) } catch { /* ok */ }
+  try { await run(`systemctl --user disable ${name}.timer 2>/dev/null`) } catch { /* ok */ }
 
   rmSync(path.join(sdDir, `${name}.timer`), { force: true })
   rmSync(path.join(sdDir, `${name}.service`), { force: true })
-  return `Worker removed (systemd): ${name}`
+  return `Task worker removed (systemd): ${name}`
 }
 
-function taskName(dir: string): string {
-  return `OpenCodeTasks-${slug(dir)}`
+function taskTaskName(dir: string, slug: string): string {
+  return `OpenCodeTasks-${dirSlug(dir)}${slug ? "-" + slug : ""}`
 }
 
-function installWin32(dir: string): string {
-  const name = taskName(dir)
-  const cmd = workerCmd(dir)
-  const tr = `${cmd.program} ${cmd.args.join(" ")}`
-
-  execSync(
-    `schtasks /Create /SC MINUTE /MO 5 /TN "${name}" /TR "${tr}" /F`,
-    { stdio: "pipe" },
-  )
-  return `Worker installed (Task Scheduler): ${name}`
+function taskXml(wrapperPath: string, interval: number): string {
+  const minutes = Math.max(1, Math.round(interval / 60))
+  const now = new Date().toISOString().replace(/\.\d{3}Z$/, "")
+  const schedUser = `${require("os").userInfo().username}\\${require("os").hostname()}`
+  return `<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+  <RegistrationInfo>
+    <Date>${now}</Date>
+    <Author>${schedUser}</Author>
+    <URI>\\OpenCodeTasks-worker</URI>
+  </RegistrationInfo>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>LeastPrivilege</RunLevel>
+    </Principal>
+  </Principals>
+  <Settings>
+    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
+    <StartWhenAvailable>true</StartWhenAvailable>
+    <ExecutionTimeLimit>PT0S</ExecutionTimeLimit>
+    <AllowStartOnDemand>true</AllowStartOnDemand>
+  </Settings>
+  <Triggers>
+    <TimeTrigger>
+      <StartBoundary>2000-01-01T00:00:00</StartBoundary>
+      <Repetition>
+        <Interval>PT${minutes}M</Interval>
+        <StopAtDurationEnd>false</StopAtDurationEnd>
+      </Repetition>
+    </TimeTrigger>
+  </Triggers>
+  <Actions Context="Author">
+    <Exec>
+      <Command>cmd.exe</Command>
+      <Arguments>/c ${wrapperPath}</Arguments>
+    </Exec>
+  </Actions>
+</Task>`
 }
 
-function uninstallWin32(dir: string): string {
-  const name = taskName(dir)
+async function installTaskWin32(dir: string, slug: string, interval: number): Promise<string> {
+  const name = taskTaskName(dir, slug)
+  const wrapperPath = winWorkerWrapper(dir, slug)
+  const xml = taskXml(wrapperPath, interval)
+  const xmlPath = path.join(dir, ".opencode", "tasks", `sched-${slug || "board"}.xml`)
+  writeFileSync(xmlPath, xml, "utf16le")
+  await run(`schtasks /Create /TN "${name}" /XML "${xmlPath}" /F`)
+  rmSync(xmlPath, { force: true })
+  return `Task worker installed (Task Scheduler): ${name}`
+}
+
+async function uninstallTaskWin32(dir: string, slug: string): Promise<string> {
+  const name = taskTaskName(dir, slug)
   try {
-    execSync(`schtasks /Delete /TN "${name}" /F`, { stdio: "pipe" })
+    await run(`schtasks /Delete /TN "${name}" /F`)
   } catch { /* ok */ }
-  return `Worker removed (Task Scheduler): ${name}`
+  const slugPart = slug ? `-${slug}` : ""
+  const wrapperPath = path.join(dir, ".opencode", "tasks", `worker${slugPart}.cmd`)
+  if (existsSync(wrapperPath)) rmSync(wrapperPath, { force: true })
+  return `Task worker removed (Task Scheduler): ${name}`
 }
 
-const platform: Platform = os.platform() as Platform
-
-export function installWorker(dir: string): string {
+export async function installTaskWorker(dir: string, slug: string, interval: number): Promise<string> {
   switch (platform) {
-    case "darwin": return installLaunchd(dir)
-    case "linux":  return installSystemd(dir)
-    case "win32":  return installWin32(dir)
+    case "darwin": return installTaskLaunchd(dir, slug, interval)
+    case "linux":  return installTaskSystemd(dir, slug, interval)
+    case "win32":  return installTaskWin32(dir, slug, interval)
     default:       throw new Error(`Unsupported platform: ${platform}`)
   }
 }
 
-export function uninstallWorker(dir: string): string {
+export async function uninstallTaskWorker(dir: string, slug: string): Promise<string> {
   switch (platform) {
-    case "darwin": return uninstallLaunchd(dir)
-    case "linux":  return uninstallSystemd(dir)
-    case "win32":  return uninstallWin32(dir)
+    case "darwin": return uninstallTaskLaunchd(dir, slug)
+    case "linux":  return uninstallTaskSystemd(dir, slug)
+    case "win32":  return uninstallTaskWin32(dir, slug)
     default:       throw new Error(`Unsupported platform: ${platform}`)
-  }
-}
-
-export function isWorkerInstalled(dir: string): boolean {
-  switch (platform) {
-    case "darwin": return existsSync(plistPath(dir))
-    case "linux":  return existsSync(path.join(systemdDir(), `${serviceName(dir)}.timer`))
-    case "win32": {
-      try {
-        execSync(`schtasks /Query /TN "${taskName(dir)}"`, { stdio: "pipe" })
-        return true
-      } catch { return false }
-    }
-    default: return false
   }
 }

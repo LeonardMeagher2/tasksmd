@@ -1,15 +1,74 @@
 import deepmerge from "deepmerge"
-import { parse as parseYaml } from "yaml"
+import parseDuration from "parse-duration-ms"
 
 export type PermissionConfig = Record<string, unknown>
+
+function parseYamlValue(raw: string): unknown {
+  const trimmed = raw.trim()
+  if (trimmed === "true" || trimmed === "yes") return true
+  if (trimmed === "false" || trimmed === "no") return false
+  if (trimmed === "null" || trimmed === "~") return null
+  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) return trimmed.slice(1, -1)
+  const asNumber = Number(trimmed)
+  if (Number.isFinite(asNumber)) return asNumber
+  return trimmed
+}
+
+function parseYamlLines(lines: string[]): Record<string, unknown> {
+  const result: Record<string, unknown> = {}
+  const stack: { obj: Record<string, unknown>; indent: number }[] = [{ obj: result, indent: -1 }]
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith("#")) continue
+
+    const indent = line.length - line.trimStart().length
+    const colonIndex = trimmed.indexOf(":")
+    if (colonIndex === -1) continue
+
+    const key = trimmed.slice(0, colonIndex).trim()
+    const value = trimmed.slice(colonIndex + 1).trim()
+
+    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
+      stack.pop()
+    }
+
+    const current = stack[stack.length - 1]
+    if (value === "") {
+      const nested: Record<string, unknown> = {}
+      current.obj[key] = nested
+      stack.push({ obj: nested, indent })
+    } else {
+      current.obj[key] = parseYamlValue(value)
+    }
+  }
+
+  return result
+}
 
 export function frontmatterData(content: string): Record<string, unknown> {
   try {
     const parts = content.split(/^---\s*$/m)
-    return (parts.length >= 3 ? parseYaml(parts[1]) : {}) ?? {}
+    if (parts.length < 3) return {}
+    const lines = parts[1].split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith("#"))
+    return parseYamlLines(lines)
   } catch {
     return {}
   }
+}
+
+export function parseEvery(value: unknown, fallback = 300): number {
+  if (value === false || value === 0 || value === "0") return 0
+  if (value === null || value === undefined) return fallback
+  if (typeof value === "number") return Math.round(value)
+  if (typeof value !== "string") return fallback
+  const trimmed = value.trim()
+  if (!trimmed) return fallback
+  if (/[*]/.test(trimmed)) return fallback
+  const ms = parseDuration(trimmed)
+  if (ms !== undefined) return Math.round(ms / 1000)
+  const asNumber = Number(trimmed)
+  return Number.isFinite(asNumber) ? Math.round(asNumber) : fallback
 }
 
 export function mergeFrontmatter(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {

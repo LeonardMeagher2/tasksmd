@@ -1,11 +1,14 @@
 import { type Plugin, tool } from "@opencode-ai/plugin"
 import { execFileSync, spawn } from "node:child_process"
-import { copyFileSync, existsSync, mkdirSync } from "node:fs"
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { fileURLToPath } from "node:url"
 import path from "node:path"
 
-import { installWorker, uninstallWorker, isWorkerInstalled } from "./tasks-scheduler"
-import { tryRunTask } from "./tasks-runtime"
+import { installTaskWorker, uninstallTaskWorker } from "./tasks-scheduler"
+
+import { frontmatterData, parseEvery } from "./task-config"
+import { parseChecklist } from "./checklist"
+import { readState, writeState } from "./state"
 
 const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const pluginDir = path.dirname(fileURLToPath(import.meta.url))
@@ -32,33 +35,76 @@ function installWorkerAsset(directory: string): void {
   copyFileSync(bundledWorker, target)
 }
 
-function hasTasksFile(directory: string): boolean {
-  return existsSync(path.join(directory, "TASKS.md"))
+
+
+function desiredSchedulers(directory: string): Record<string, number> {
+  const tasksFile = path.join(directory, "TASKS.md")
+  if (!existsSync(tasksFile)) return {}
+
+  const content = readFileSync(tasksFile, "utf-8")
+  const parsed = parseChecklist(content)
+  const result: Record<string, number> = {}
+
+  const boardEvery = parseEvery(parsed.frontmatter.every, 0)
+  if (boardEvery > 0) result[""] = boardEvery
+
+  for (const task of parsed.tasks) {
+    if (!task.link) continue
+    const linkedFile = path.join(directory, task.link.path)
+    const linkedContent = existsSync(linkedFile) ? readFileSync(linkedFile, "utf-8") : ""
+    const linkedConfig = linkedContent ? frontmatterData(linkedContent) : {}
+    const interval = parseEvery(linkedConfig.every, 0)
+    if (interval > 0) result[task.slug] = interval
+  }
+
+  return result
+}
+
+async function reconcileTaskSchedulers(directory: string): Promise<void> {
+  const desired = desiredSchedulers(directory)
+  const state = readState(directory)
+  const installed = state.schedulers
+
+  const desiredSlugs = new Set(Object.keys(desired))
+
+  for (const slug of Object.keys(installed)) {
+    if (!desiredSlugs.has(slug) || installed[slug] !== desired[slug]) {
+      await uninstallTaskWorker(directory, slug)
+    }
+  }
+
+  for (const slug of desiredSlugs) {
+    if (installed[slug] === undefined || installed[slug] !== desired[slug]) {
+      await installTaskWorker(directory, slug, desired[slug])
+    }
+  }
+
+  state.schedulers = desired
+  writeState(directory, state)
+}
+
+function spawnWorker(directory: string): void {
+  const worker = path.join(directory, ".opencode", "tasks", bundledWorker.endsWith(".js") ? "worker.js" : "worker.ts")
+  spawn(opencodePath(), ["run", worker], {
+    cwd: directory,
+    windowsHide: true,
+    stdio: "ignore",
+    detached: true,
+    env: { ...process.env, BUN_BE_BUN: "1" },
+  }).unref()
 }
 
 export const TasksPlugin: Plugin = async ({ directory, client }) => {
-  const schedulerEnabled = hasTasksFile(directory)
   installWorkerAsset(directory)
-  if (schedulerEnabled && !isWorkerInstalled(directory)) {
-    installWorker(directory)
-  }
+  if (existsSync(path.join(directory, "TASKS.md"))) await reconcileTaskSchedulers(directory)
 
   const onFileEdited = (): void => {
-    if (!schedulerEnabled) return
     const existing = debounceTimers.get(directory)
     if (existing) clearTimeout(existing)
     debounceTimers.set(directory, setTimeout(async () => {
       debounceTimers.delete(directory)
-      if (client) {
-        try { await tryRunTask(client, directory); return } catch { /* fall through */ }
-      }
-      const worker = path.join(directory, ".opencode", "tasks", bundledWorker.endsWith(".js") ? "worker.js" : "worker.ts")
-      spawn(opencodePath(), ["run", worker], {
-        cwd: directory,
-        stdio: "ignore",
-        detached: true,
-        env: { ...process.env, BUN_BE_BUN: "1" },
-      }).unref()
+      await reconcileTaskSchedulers(directory)
+      spawnWorker(directory)
     }, 5000))
   }
 
@@ -78,22 +124,29 @@ The task board is TASKS.md. Linked task files live wherever their link points. W
       }
     },
     tool: {
-      start_tasks_worker: tool({
-        description: "Install or reinstall the background worker (launchd/systemd/schtasks, runs every 5 min).",
+      tasks_start: tool({
+        description: "Reconcile board and per-task schedulers, then run any pending work.",
         args: {},
         async execute(_args, ctx) {
           const dir = ctx.directory || directory
-          uninstallWorker(dir)
-          return installWorker(dir)
+          await reconcileTaskSchedulers(dir)
+          spawnWorker(dir)
+          return "Schedulers reconciled."
         },
       }),
 
-      stop_tasks_worker: tool({
-        description: "Unload and remove the scheduler entry for the background worker.",
+      tasks_remove_schedules: tool({
+        description: "Remove all board and per-task schedulers for this project.",
         args: {},
         async execute(_args, ctx) {
           const dir = ctx.directory || directory
-          return uninstallWorker(dir)
+          const state = readState(dir)
+          for (const slug of Object.keys(state.schedulers)) {
+            await uninstallTaskWorker(dir, slug)
+          }
+          state.schedulers = {}
+          writeState(dir, state)
+          return "All schedulers removed."
         },
       }),
     },

@@ -14,7 +14,7 @@ for (const entrypoint of [
     compile: false,
     external: ["@opencode-ai/plugin", "@opencode-ai/sdk"],
     format: "esm",
-    minify: false,
+    minify: true,
   })
   if (!result.success) {
     for (const log of result.logs) console.error(log)
