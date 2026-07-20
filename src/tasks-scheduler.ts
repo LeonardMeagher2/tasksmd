@@ -88,7 +88,7 @@ ${args}
 
 async function uninstallTaskLaunchd(dir: string, slug: string): Promise<string> {
   const plist = taskPlistPath(dir, slug)
-  if (!existsSync(plist)) return `No worker plist found for ${slug}.`
+  if (!existsSync(plist)) return `No worker plist found for ${slug || "board"} in ${dir}.`
   try { await run(`launchctl unload ${plist}`) } catch { /* ok */ }
   rmSync(plist, { force: true })
   return `Task worker removed (launchd): ${taskLabel(dir, slug)}`

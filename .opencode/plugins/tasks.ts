@@ -1,1 +1,1 @@
-// export { TasksPlugin, default } from "../../dist/index.js"
+export { TasksPlugin, default } from "../../dist/index.js"

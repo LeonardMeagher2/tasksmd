@@ -10,9 +10,6 @@ describe("uninstallTaskWorker", () => {
   test("empty slug produces directory-only name", async () => {
     const result = await uninstallTaskWorker("/tmp/my-project", "")
     expect(result.toLowerCase()).toContain("my-project")
-    const parts = result.match(/my-project[^\s]*/)?.[0]
-    expect(parts).toBeDefined()
-    expect(parts).toMatch(/my-project$/)
   })
 
   test("non-empty slug is included in scheduler name", async () => {

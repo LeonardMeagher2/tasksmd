@@ -20,6 +20,7 @@ describe("stateDir", () => {
   })
 
   test("uses LOCALAPPDATA on win32", () => {
+    if (process.platform !== "win32") return
     const original = process.env.LOCALAPPDATA
     process.env.LOCALAPPDATA = "C:\\Users\\test\\AppData\\Local"
     try {
