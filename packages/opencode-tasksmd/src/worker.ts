@@ -3,9 +3,14 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
-import { frontmatterData, mergeFrontmatter, modelValue, permissionRules, taskPermissions, parseEvery } from "./task-config"
+
+import {
+  frontmatterData, mergeFrontmatter, modelValue,
+  permissionRules, taskPermissions, parseEvery,
+  parseChecklist, replaceTask,
+} from "@leonardmeagher2/tasksmd"
+import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
 import { stateDir, readState, updateTask, writeState, type TaskRunState } from "./state"
-import { replaceTask, parseChecklist, type ChecklistTask } from "./checklist"
 import { installTaskWorker } from "./tasks-scheduler"
 
 function findOpencode(): string {
@@ -122,6 +127,8 @@ async function runAttached(
   if (result.error) throw new Error(JSON.stringify(result.error))
   return { session: id, output: JSON.stringify(result.data ?? result) }
 }
+
+type Checklist = { frontmatter: Record<string, unknown>; tasks: ChecklistTask[] }
 
 function findTask(parsed: Checklist): ChecklistTask | undefined {
   const state = readState(projectRoot)

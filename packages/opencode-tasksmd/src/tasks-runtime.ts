@@ -2,11 +2,10 @@ import { spawn } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 
-import { parseChecklist } from "./checklist"
-import { frontmatterData, parseEvery } from "./task-config"
+import { parseChecklist, frontmatterData, parseEvery } from "@leonardmeagher2/tasksmd"
 import { readState, writeState } from "./state"
 import { installTaskWorker, uninstallTaskWorker } from "./tasks-scheduler"
-import { opencodePath } from "./utils"
+import { opencodePath, bundledWorker } from "./utils"
 
 function desiredSchedulers(directory: string): Record<string, number> {
   const tasksFile = path.join(directory, "TASKS.md")
@@ -55,7 +54,8 @@ export async function reconcileTaskSchedulers(directory: string): Promise<void> 
 }
 
 export function spawnWorker(directory: string): void {
-  const worker = path.join(directory, ".opencode", "tasks", "worker.ts")
+  const targetName = bundledWorker.endsWith(".js") ? "worker.js" : "worker.ts"
+  const worker = path.join(directory, ".opencode", "tasks", targetName)
   spawn(opencodePath(), ["run", worker], {
     cwd: directory,
     windowsHide: true,

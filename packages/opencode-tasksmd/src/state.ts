@@ -27,7 +27,7 @@ function userStateRoot(): string {
 }
 
 export function stateDir(directory: string): string {
-  return path.join(userStateRoot(), "opencode-tasks", projectId(directory))
+  return path.join(userStateRoot(), "opencode-tasksmd", projectId(directory))
 }
 
 function stateFile(directory: string): string {
@@ -35,7 +35,7 @@ function stateFile(directory: string): string {
 }
 
 export function logFile(directory: string): string {
-  return path.join(os.tmpdir(), "opencode-tasks", projectId(directory), "worker.log")
+  return path.join(os.tmpdir(), "opencode-tasksmd", projectId(directory), "worker.log")
 }
 
 export function readState(directory: string): ProjectState {

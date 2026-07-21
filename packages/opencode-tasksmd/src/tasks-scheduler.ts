@@ -40,7 +40,7 @@ function winWorkerWrapper(dir: string, taskSlug?: string): string {
 }
 
 function taskLabel(dir: string, slug: string): string {
-  return `com.opencode.tasks.worker.${dirSlug(dir)}${slug ? "." + slug : ""}`
+  return `com.opencode.tasksmd.worker.${dirSlug(dir)}${slug ? "." + slug : ""}`
 }
 
 function taskPlistPath(dir: string, slug: string): string {
@@ -95,7 +95,7 @@ async function uninstallTaskLaunchd(dir: string, slug: string): Promise<string> 
 }
 
 function taskServiceName(dir: string, slug: string): string {
-  return `opencode-tasks-${dirSlug(dir)}${slug ? "-" + slug : ""}`
+  return `opencode-tasksmd-${dirSlug(dir)}${slug ? "-" + slug : ""}`
 }
 
 async function installTaskSystemd(dir: string, slug: string, interval: number): Promise<string> {

@@ -1,5 +1,7 @@
 import { tool } from "@opencode-ai/plugin"
 import { installTaskWorker, uninstallTaskWorker } from "../tasks-scheduler"
+import { reconcileTaskSchedulers, spawnWorker } from "../tasks-runtime"
+import { readState, writeState } from "../state"
 
 export function createWorkerTools(directory: string) {
   return {
@@ -8,7 +10,6 @@ export function createWorkerTools(directory: string) {
       args: {},
       async execute(_args, ctx) {
         const dir = ctx.directory || directory
-        const { reconcileTaskSchedulers, spawnWorker } = await import("../tasks-runtime")
         await reconcileTaskSchedulers(dir)
         spawnWorker(dir)
         return "Schedulers reconciled."
@@ -20,7 +21,6 @@ export function createWorkerTools(directory: string) {
       args: {},
       async execute(_args, ctx) {
         const dir = ctx.directory || directory
-        const { readState, writeState } = await import("../state")
         const state = readState(dir)
         for (const slug of Object.keys(state.schedulers)) {
           await uninstallTaskWorker(dir, slug)

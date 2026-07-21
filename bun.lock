@@ -4,19 +4,35 @@
   "workspaces": {
     "": {
       "name": "opencode-tasks",
+    },
+    "packages/opencode-tasksmd": {
+      "name": "@leonardmeagher2/opencode-tasksmd",
+      "version": "0.1.0",
       "dependencies": {
+        "@leonardmeagher2/tasksmd": "workspace:*",
         "deepmerge": "^4.3.1",
         "parse-duration-ms": "^0.1.0",
-        "yaml": "^2.8.1",
       },
       "peerDependencies": {
         "@opencode-ai/plugin": ">=1.18.0",
         "@opencode-ai/sdk": ">=1.18.0",
       },
     },
+    "packages/tasksmd": {
+      "name": "@leonardmeagher2/tasksmd",
+      "version": "0.1.0",
+      "dependencies": {
+        "deepmerge": "^4.3.1",
+        "parse-duration-ms": "^0.1.0",
+      },
+    },
   },
   "packages": {
     "@ai-sdk/provider": ["@ai-sdk/provider@3.0.8", "", { "dependencies": { "json-schema": "^0.4.0" } }, "sha512-oGMAgGoQdBXbZqNG0Ze56CHjDZ1IDYOwGYxYjO5KLSlz5HiNQ9udIXsPZ61VWaHGZ5XW/jyjmr6t2xz2jGVwbQ=="],
+
+    "@leonardmeagher2/opencode-tasksmd": ["@leonardmeagher2/opencode-tasksmd@workspace:packages/opencode-tasksmd"],
+
+    "@leonardmeagher2/tasksmd": ["@leonardmeagher2/tasksmd@workspace:packages/tasksmd"],
 
     "@msgpackr-extract/msgpackr-extract-darwin-arm64": ["@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.4", "", { "os": "darwin", "cpu": "arm64" }, "sha512-LCkGo6JDfaBhgST7UpPWgNgLINpcpabaHfyz5OBx75nUYxBsaEPxjnyNjWpeb/xBup/682QnBfRBy2/LvPutZQ=="],
 

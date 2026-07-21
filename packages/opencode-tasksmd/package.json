@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@leonardmeagher2/opencode-tasksmd",
+  "version": "0.1.0",
+  "description": "Background task queue for OpenCode projects, powered by TASKS.md",
+  "author": {
+    "name": "Leonard Meagher",
+    "email": "LeonardMeagher2@gmail.com"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "bun run build.ts",
+    "pack": "npm pack --dry-run",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "@leonardmeagher2/tasksmd": "workspace:*",
+    "deepmerge": "^4.3.1",
+    "parse-duration-ms": "^0.1.0"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "tasks",
+    "automation"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LeonardMeagher2/tasks.git"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.18.0",
+    "@opencode-ai/sdk": ">=1.18.0"
+  }
+}

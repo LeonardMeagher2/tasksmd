@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json.schemastore.org/package.json",
+  "name": "@leonardmeagher2/tasksmd",
+  "version": "0.1.0",
+  "description": "Parse and manage TASKS.md files — the core format library for the tasksmd ecosystem",
+  "author": {
+    "name": "Leonard Meagher",
+    "email": "LeonardMeagher2@gmail.com"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "files": [
+    "dist",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "bun run build.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "deepmerge": "^4.3.1",
+    "parse-duration-ms": "^0.1.0"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/LeonardMeagher2/tasks.git"
+  }
+}

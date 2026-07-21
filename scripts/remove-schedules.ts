@@ -1,5 +1,5 @@
-import { uninstallTaskWorker } from "../src/tasks-scheduler"
-import { readState, writeState } from "../src/state"
+import { uninstallTaskWorker } from "../packages/opencode-tasksmd/src/tasks-scheduler"
+import { readState, writeState } from "../packages/opencode-tasksmd/src/state"
 
 const dir = process.cwd()
 const state = readState(dir)

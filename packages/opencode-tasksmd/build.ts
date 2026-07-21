@@ -12,7 +12,7 @@ for (const entrypoint of [
     outdir: "dist",
     target: "bun",
     compile: false,
-    external: ["@opencode-ai/plugin", "@opencode-ai/sdk"],
+    external: ["@opencode-ai/plugin", "@opencode-ai/sdk", "@leonardmeagher2/tasksmd"],
     format: "esm",
     minify: true,
   })

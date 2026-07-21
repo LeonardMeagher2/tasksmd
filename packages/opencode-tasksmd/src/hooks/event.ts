@@ -19,7 +19,7 @@ export function createEventHook(directory: string, schedulerEnabled: boolean) {
           try {
             await tryRunTask(null, directory)
           } catch {
-            tryRunTask(null, directory)
+            await tryRunTask(null, directory)
           }
         }, 5000),
       )
