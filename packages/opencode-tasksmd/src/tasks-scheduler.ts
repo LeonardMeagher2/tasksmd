@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs"
 import path from "node:path"
 import os from "node:os"
 
-import { workerAsset } from "./utils"
+import { workerAsset, workerRuntime } from "./utils"
 
 type Platform = "darwin" | "linux" | "win32"
 const platform: Platform = os.platform() as Platform
@@ -20,20 +20,31 @@ function dirSlug(dir: string): string {
   return dir.replace(/[^a-zA-Z0-9]/g, "-").replace(/^-+|-+$/g, "").toLowerCase()
 }
 
-function workerCmd(dir: string, taskSlug?: string): { program: string; args: string[] } {
-  const program = process.execPath
+function workerCmd(dir: string, taskSlug?: string, extraEnv?: Record<string, string>): { program: string; args: string[]; env: Record<string, string> } {
+  const runtime = workerRuntime()
   const extra = taskSlug ? ["--task", taskSlug] : []
   return {
-    program,
-    args: ["run", workerAsset(dir), ...extra],
+    program: runtime.program,
+    args: [...runtime.args, workerAsset(dir), ...extra],
+    env: { ...runtime.env, ...extraEnv },
   }
 }
 
-function winWorkerWrapper(dir: string, taskSlug?: string): string {
-  const cmd = workerCmd(dir, taskSlug)
-  const lines = [`@set BUN_BE_BUN=1`, `@"${cmd.program}" ${cmd.args.map(a => `"${a}"`).join(" ")}`]
+function winWorkerWrapper(dir: string, taskSlug?: string, extraEnv?: Record<string, string>): string {
+  // Task Scheduler runs the action in the interactive session — a cmd wrapper
+  // would flash a console window every interval. wscript + Run(..., 0) stays hidden.
+  const cmd = workerCmd(dir, taskSlug, extraEnv)
+  const commandLine = [cmd.program, ...cmd.args].map((a) => `"${a}"`).join(" ")
+  const vbsString = `"${commandLine.replace(/"/g, '""')}"`
+  const envLines = Object.entries(cmd.env).map(([key, value]) => `shell.Environment("PROCESS")("${key}") = "${value}"`)
+  const lines = [
+    `Set shell = CreateObject("WScript.Shell")`,
+    `shell.CurrentDirectory = "${dir.replace(/"/g, '""')}"`,
+    ...envLines,
+    `shell.Run ${vbsString}, 0, False`,
+  ]
   const slugPart = taskSlug ? `-${taskSlug}` : ""
-  const wrapperPath = path.join(dir, ".opencode", "tasks", `worker${slugPart}.cmd`)
+  const wrapperPath = path.join(dir, ".opencode", "tasks", `worker${slugPart}.vbs`)
   writeFileSync(wrapperPath, lines.join("\r\n"), "utf-8")
   return wrapperPath
 }
@@ -46,9 +57,9 @@ function taskPlistPath(dir: string, slug: string): string {
   return path.join(os.homedir(), "Library", "LaunchAgents", `${taskLabel(dir, slug)}.plist`)
 }
 
-async function installTaskLaunchd(dir: string, slug: string, interval: number): Promise<string> {
+async function installTaskLaunchd(dir: string, slug: string, interval: number, extraEnv?: Record<string, string>): Promise<string> {
   const plist = taskPlistPath(dir, slug)
-  const cmd = workerCmd(dir, slug)
+  const cmd = workerCmd(dir, slug, extraEnv)
 
   mkdirSync(path.dirname(plist), { recursive: true })
 
@@ -70,8 +81,7 @@ ${args}
     <string>${dir}</string>
     <key>EnvironmentVariables</key>
     <dict>
-        <key>BUN_BE_BUN</key>
-        <string>1</string>
+${Object.entries(cmd.env).map(([key, value]) => `        <key>${key}</key>\n        <string>${value}</string>`).join("\n")}
     </dict>
     <key>StartInterval</key>
     <integer>${interval}</integer>
@@ -97,10 +107,10 @@ function taskServiceName(dir: string, slug: string): string {
   return `opencode-tasksmd-${dirSlug(dir)}${slug ? "-" + slug : ""}`
 }
 
-async function installTaskSystemd(dir: string, slug: string, interval: number): Promise<string> {
+async function installTaskSystemd(dir: string, slug: string, interval: number, extraEnv?: Record<string, string>): Promise<string> {
   const sdDir = path.join(os.homedir(), ".config", "systemd", "user")
   const name = taskServiceName(dir, slug)
-  const cmd = workerCmd(dir, slug)
+  const cmd = workerCmd(dir, slug, extraEnv)
   const exe = cmd.program
   const args = cmd.args.join(" ")
   const intervalSec = `${interval}sec`
@@ -114,7 +124,7 @@ Description=OpenCode task worker for ${slug} in ${dirSlug(dir)}
 Type=exec
 WorkingDirectory=${dir}
 ExecStart=${exe} ${args}
-Environment=BUN_BE_BUN=1
+${Object.entries(cmd.env).map(([key, value]) => `Environment=${key}=${value}`).join("\n")}
 Restart=no
 `
 
@@ -155,7 +165,7 @@ function taskTaskName(dir: string, slug: string): string {
   return `OpenCodeTasks-${dirSlug(dir)}${slug ? "-" + slug : ""}`
 }
 
-function taskXml(wrapperPath: string, interval: number): string {
+function taskXml(wrapperPath: string, interval: number, dir: string): string {
   const minutes = Math.max(1, Math.round(interval / 60))
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "")
   const schedUser = `${os.userInfo().username}\\${os.hostname()}`
@@ -191,17 +201,18 @@ function taskXml(wrapperPath: string, interval: number): string {
   </Triggers>
   <Actions Context="Author">
     <Exec>
-      <Command>cmd.exe</Command>
-      <Arguments>/c ${wrapperPath}</Arguments>
+      <Command>wscript.exe</Command>
+      <Arguments>//B //Nologo "${wrapperPath}"</Arguments>
+      <WorkingDirectory>${dir}</WorkingDirectory>
     </Exec>
   </Actions>
 </Task>`
 }
 
-async function installTaskWin32(dir: string, slug: string, interval: number): Promise<string> {
+async function installTaskWin32(dir: string, slug: string, interval: number, extraEnv?: Record<string, string>): Promise<string> {
   const name = taskTaskName(dir, slug)
-  const wrapperPath = winWorkerWrapper(dir, slug)
-  const xml = taskXml(wrapperPath, interval)
+  const wrapperPath = winWorkerWrapper(dir, slug, extraEnv)
+  const xml = taskXml(wrapperPath, interval, dir)
   const xmlPath = path.join(dir, ".opencode", "tasks", `sched-${slug || "board"}.xml`)
   // schtasks rejects UTF-16 XML without a byte order mark.
   writeFileSync(xmlPath, `﻿${xml}`, "utf16le")
@@ -216,16 +227,35 @@ async function uninstallTaskWin32(dir: string, slug: string): Promise<string> {
     await run("schtasks", ["/Delete", "/TN", name, "/F"])
   } catch { /* ok */ }
   const slugPart = slug ? `-${slug}` : ""
-  const wrapperPath = path.join(dir, ".opencode", "tasks", `worker${slugPart}.cmd`)
-  if (existsSync(wrapperPath)) rmSync(wrapperPath, { force: true })
+  rmSync(path.join(dir, ".opencode", "tasks", `worker${slugPart}.vbs`), { force: true })
+  rmSync(path.join(dir, ".opencode", "tasks", `worker${slugPart}.cmd`), { force: true })
   return `Task worker removed (Task Scheduler): ${name}`
 }
 
-export async function installTaskWorker(dir: string, slug: string, interval: number): Promise<string> {
+/** True when the OS-level registration (and the wrapper it points to) actually exists. */
+export async function schedulerExists(dir: string, slug: string): Promise<boolean> {
   switch (platform) {
-    case "darwin": return installTaskLaunchd(dir, slug, interval)
-    case "linux":  return installTaskSystemd(dir, slug, interval)
-    case "win32":  return installTaskWin32(dir, slug, interval)
+    case "darwin": return existsSync(taskPlistPath(dir, slug))
+    case "linux":  return existsSync(path.join(os.homedir(), ".config", "systemd", "user", `${taskServiceName(dir, slug)}.timer`))
+    case "win32": {
+      const slugPart = slug ? `-${slug}` : ""
+      if (!existsSync(path.join(dir, ".opencode", "tasks", `worker${slugPart}.vbs`))) return false
+      try {
+        await run("schtasks", ["/Query", "/TN", taskTaskName(dir, slug)])
+        return true
+      } catch {
+        return false
+      }
+    }
+    default:       return false
+  }
+}
+
+export async function installTaskWorker(dir: string, slug: string, interval: number, extraEnv?: Record<string, string>): Promise<string> {
+  switch (platform) {
+    case "darwin": return installTaskLaunchd(dir, slug, interval, extraEnv)
+    case "linux":  return installTaskSystemd(dir, slug, interval, extraEnv)
+    case "win32":  return installTaskWin32(dir, slug, interval, extraEnv)
     default:       throw new Error(`Unsupported platform: ${platform}`)
   }
 }

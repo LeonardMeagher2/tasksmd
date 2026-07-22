@@ -15,6 +15,10 @@ export type TaskRunState = {
 export type ProjectState = {
   schedulers: Record<string, number>
   tasks: Record<string, TaskRunState>
+  /** Last server URL seen by the plugin host — lets scheduled workers attach. */
+  server_url?: string
+  /** Server password when the host was started with OPENCODE_SERVER_PASSWORD. */
+  server_password?: string
 }
 
 function projectId(directory: string): string {
@@ -45,6 +49,8 @@ export function readState(directory: string): ProjectState {
     return {
       schedulers: data.schedulers ?? {},
       tasks: data.tasks ?? {},
+      server_url: data.server_url,
+      server_password: data.server_password,
     }
   } catch {
     return { schedulers: {}, tasks: {} }

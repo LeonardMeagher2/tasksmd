@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process"
 import { existsSync, readFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
+import { readState } from "../state"
 
 export type ServerConnection = { url: string; headers?: Record<string, string>; password?: string }
 
@@ -27,18 +27,39 @@ export function findOpencode(): string {
 
 async function healthyServer(connection: ServerConnection): Promise<boolean> {
   try {
-    const client = createOpencodeClient({ baseUrl: connection.url, headers: connection.headers }) as any
-    const health = await client.v2.health.get()
-    return health.data?.healthy === true
+    const url = `${connection.url.replace(/\/+$/, "")}/global/health`
+    const res = await fetch(url, { headers: connection.headers })
+    if (!res.ok) return false
+    const data = (await res.json().catch(() => ({}))) as { healthy?: boolean }
+    return data.healthy !== false
   } catch {
     return false
   }
 }
 
-export async function findServer(): Promise<ServerConnection | undefined> {
+function withPassword(connection: ServerConnection, password?: string): ServerConnection {
+  if (!password) return connection
+  return {
+    ...connection,
+    password,
+    headers: { Authorization: `Basic ${Buffer.from(`opencode:${password}`).toString("base64")}` },
+  }
+}
+
+export async function findServer(directory?: string): Promise<ServerConnection | undefined> {
+  const envPassword = process.env.OPENCODE_SERVER_PASSWORD || undefined
+
   const explicit = process.env.OPENCODE_TASKS_SERVER_URL
   if (explicit) {
-    const connection = { url: explicit }
+    const connection = withPassword({ url: explicit }, envPassword)
+    if (await healthyServer(connection)) return connection
+  }
+
+  // Recorded by the plugin host — always fresh as of the last opencode boot.
+  // Callers pass the project dir explicitly; the worker falls back to its cwd.
+  const state = readState(directory ?? process.cwd())
+  if (state.server_url) {
+    const connection = withPassword({ url: state.server_url }, state.server_password ?? envPassword)
     if (await healthyServer(connection)) return connection
   }
 

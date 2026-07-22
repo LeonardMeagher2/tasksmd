@@ -101,8 +101,11 @@ Releasing uses [changesets](https://github.com/changesets/changesets):
 2. `bun run version` — consume pending changesets, bump versions, update changelogs.
 3. `bun run release` — publish both packages to npm in dependency order.
 
-This repo's `.opencode/plugins/tasks.ts` loads the plugin straight from source,
-so OpenCode picks up edits on restart without a build.
+For local development, `bun run dev` builds a self-contained plugin bundle at
+`.opencode/plugins/tasks.js` (all dependencies inlined, like published OpenCode
+plugins) plus the worker asset at `.opencode/tasks/worker.js`. Restart OpenCode
+to pick up changes. The bundle and skills are gitignored — rerun `bun run dev`
+after editing plugin source.
 
 To try the plugin the way an npm user would run it, build first, then point a
 scratch project's `opencode.json` at the built entry:

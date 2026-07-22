@@ -20,12 +20,15 @@ if (!plugin.success) {
 }
 
 // The worker is copied standalone into a project's .opencode/tasks/ directory
-// where no node_modules exist — it must be fully self-contained.
+// where no node_modules exist — it must be fully self-contained. It runs
+// under bun (CLI hosts) and plain Node/Electron (desktop hosts), so build for
+// the lowest common denominator: node.
 const worker = await Bun.build({
   entrypoints: ["src/worker.ts"],
   outdir: "dist",
-  target: "bun",
+  target: "node",
   compile: false,
+  naming: "worker.mjs",
   format: "esm",
   minify: true,
 })

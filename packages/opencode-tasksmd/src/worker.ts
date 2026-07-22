@@ -1,10 +1,11 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs"
+import path from "node:path"
 
-import { parseChecklist } from "@leonardmeagher2/tasksmd"
+import { frontmatter, parseChecklist } from "@leonardmeagher2/tasksmd"
 import { parseEvery } from "./config"
 import { readState, stateDir, writeState } from "./state"
 import { installTaskWorker } from "./tasks-scheduler"
-import { loadTaskConfig, log, projectRoot, tasksFile } from "./worker/common"
+import { log, projectRoot, tasksFile } from "./worker/common"
 import { findServer } from "./worker/server"
 import { findTask } from "./worker/select"
 import { runTask, runTaskBySlug } from "./worker/run"
@@ -30,10 +31,19 @@ async function main(): Promise<void> {
     return
   }
 
-  await runTask(selected, content, "")
+  // Resume the same session for an interrupted task, like runTaskBySlug does.
+  const session = selected.state === "active" ? readState(projectRoot).tasks[selected.slug]?.session || "" : ""
+  await runTask(selected, content, session)
 
-  // A completed run may have introduced a per-task schedule — install it once.
-  const interval = parseEvery(loadTaskConfig(content, selected).every, 0)
+  // A linked task file may declare its own recurring schedule — install it once.
+  // The board's own `every` belongs to the board scheduler, not to this task.
+  let interval = 0
+  if (selected.link) {
+    const linkedFile = path.join(projectRoot, selected.link.path)
+    if (existsSync(linkedFile)) {
+      interval = parseEvery(frontmatter(readFileSync(linkedFile, "utf-8")).every, 0)
+    }
+  }
   if (interval > 0) {
     const state = readState(projectRoot)
     if (!state.schedulers[selected.slug]) {

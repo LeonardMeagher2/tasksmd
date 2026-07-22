@@ -5,8 +5,8 @@ import path from "node:path"
 import { parseChecklist, frontmatter } from "@leonardmeagher2/tasksmd"
 import { parseEvery } from "./config"
 import { readState, writeState } from "./state"
-import { installTaskWorker, uninstallTaskWorker } from "./tasks-scheduler"
-import { opencodePath, workerAsset } from "./utils"
+import { installTaskWorker, schedulerExists, uninstallTaskWorker } from "./tasks-scheduler"
+import { workerAsset, workerRuntime } from "./utils"
 
 function desiredSchedulers(directory: string): Record<string, number> {
   const tasksFile = path.join(directory, "TASKS.md")
@@ -45,7 +45,8 @@ export async function reconcileTaskSchedulers(directory: string): Promise<void> 
   }
 
   for (const slug of desiredSlugs) {
-    if (installed[slug] === undefined || installed[slug] !== desired[slug]) {
+    const upToDate = installed[slug] === desired[slug] && (await schedulerExists(directory, slug))
+    if (!upToDate) {
       await installTaskWorker(directory, slug, desired[slug])
     }
   }
@@ -54,17 +55,24 @@ export async function reconcileTaskSchedulers(directory: string): Promise<void> 
   writeState(directory, state)
 }
 
-export function spawnWorker(directory: string): void {
-  spawn(opencodePath(), ["run", workerAsset(directory)], {
+export function spawnWorker(directory: string, serverUrl?: string): void {
+  const runtime = workerRuntime()
+  const child = spawn(runtime.program, [...runtime.args, workerAsset(directory)], {
     cwd: directory,
     windowsHide: true,
     stdio: "ignore",
     detached: true,
-    env: { ...process.env, BUN_BE_BUN: "1" },
-  }).unref()
+    env: {
+      ...process.env,
+      ...runtime.env,
+      ...(serverUrl ? { OPENCODE_TASKS_SERVER_URL: serverUrl } : {}),
+    },
+  })
+  child.on("error", () => { /* runtime missing — nothing to do */ })
+  child.unref()
 }
 
-export async function tryRunTask(directory: string): Promise<void> {
+export async function tryRunTask(directory: string, serverUrl?: string): Promise<void> {
   await reconcileTaskSchedulers(directory)
-  spawnWorker(directory)
+  spawnWorker(directory, serverUrl)
 }

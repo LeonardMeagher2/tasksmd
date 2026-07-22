@@ -1,16 +1,25 @@
 import { spawn } from "node:child_process"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
+import { createOpencodeClient } from "@opencode-ai/sdk"
 
 import { parseChecklist, replaceTask } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
-import { modelValue, permissionRules, taskPermissions } from "../config"
+import { modelValue, taskPermissions } from "../config"
 import { readState, updateTask } from "../state"
 import { loadTaskConfig, log, projectRoot, tasksFile } from "./common"
 import { findOpencode, findServer, type ServerConnection } from "./server"
 
-const TASK_GUIDANCE = `Work directly on this task in the current project. Inspect relevant files first, then make and verify the requested changes. Resolve routine ambiguity with a sensible minimal result and proceed. If the task links to a file, read it and treat it as the full task. When the work is complete and verified, call the tasks_done tool. When you cannot proceed, call the tasks_blocked tool and state the blocker in your reply. Never edit task markers in TASKS.md yourself.`
+function taskPrompt(task: ChecklistTask, isRetry: boolean): string {
+  return `# Task
+
+${task.raw}
+
+# Rules
+${isRetry ? "- In progress already — check what is done, then finish it.\n" : ""}- Read any linked file in full.
+- Verify your work before finishing.
+- Call tasks_done when complete, or tasks_blocked with the reason you are stuck.`
+}
 
 async function runAttached(
   server: ServerConnection,
@@ -29,26 +38,61 @@ async function runAttached(
   const selectedModel = modelValue(model)
   let id = sessionId
 
+  // A stored session may have been deleted from the server — start fresh then.
+  if (id) {
+    const existing = await client.session.get({ path: { id }, query: { directory: projectRoot } })
+    if (existing.error) {
+      log(`task=${slug} session=${id} action=discard reason=session-gone`)
+      id = ""
+    }
+  }
+
+  // Note: the v1 session API has no per-session permission ruleset — task
+  // `permission` frontmatter only takes effect in standalone (CLI) mode.
   if (!id) {
     const created = await client.session.create({
-      title: `task:${slug}`,
-      agent: agent || undefined,
-      model: selectedModel ? { providerID: selectedModel.providerID, id: selectedModel.modelID } : undefined,
-      permission: permissionRules(permissions),
+      body: { title: `task:${slug}` },
+      query: { directory: projectRoot },
     })
     id = created.data?.id || created.id || ""
   }
   if (!id) throw new Error("OpenCode did not return a session ID")
 
   updateTask(projectRoot, slug, { pid: process.pid, session: id, status: "running" })
-  const result = await client.session.prompt({
-    sessionID: id,
-    agent: agent || undefined,
-    model: selectedModel,
-    parts: [{ type: "text", text: prompt }],
+
+  // Fire-and-poll: the synchronous message endpoint can hold the request open
+  // past completion on some servers. promptAsync returns immediately; we poll
+  // session status until the turn is done.
+  const sent = await client.session.promptAsync({
+    path: { id },
+    query: { directory: projectRoot },
+    body: {
+      agent: agent || undefined,
+      model: selectedModel,
+      tools: { tasks_done: true, tasks_blocked: true },
+      parts: [{ type: "text", text: prompt }],
+    },
   })
-  if (result.error) throw new Error(JSON.stringify(result.error))
-  return { session: id, output: JSON.stringify(result.data ?? result) }
+  if (sent.error) throw new Error(JSON.stringify(sent.error))
+
+  const deadline = Date.now() + 30 * 60 * 1000
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, 3000))
+    const statuses = await client.session.status({ query: { directory: projectRoot } })
+    const status = statuses.data?.[id]
+    if (!status || status.type === "idle") break
+    if (status.type === "retry") throw new Error(`session retry failed: ${status.message}`)
+    if (Date.now() > deadline) throw new Error("session timed out after 30 minutes")
+  }
+
+  let output = ""
+  try {
+    const messages = await client.session.messages({ path: { id }, query: { directory: projectRoot, limit: 1 } })
+    output = JSON.stringify(messages.data ?? messages)
+  } catch {
+    output = "{}"
+  }
+  return { session: id, output }
 }
 
 export async function runTask(task: ChecklistTask, content: string, session: string): Promise<void> {
@@ -84,9 +128,7 @@ export async function runTask(task: ChecklistTask, content: string, session: str
   const agent = typeof taskConfig.agent === "string" ? taskConfig.agent : ""
   const taskPermissionRules = taskPermissions(taskConfig)
 
-  const prompt = isRetry
-    ? "Continue the existing task. Check what is already done. If complete, call the tasks_done tool. If blocked, call the tasks_blocked tool and state the blocker. Otherwise finish the remaining work now."
-    : `${task.raw}\n\n${TASK_GUIDANCE}`
+  const prompt = taskPrompt(task, isRetry)
 
   const server = await findServer()
   const opencode = findOpencode() || "opencode"
@@ -143,6 +185,10 @@ export async function runTask(task: ChecklistTask, content: string, session: str
     child.stdin.write(prompt)
     child.stdin.end()
     exitCode = await new Promise<number>((resolve) => {
+      child.on("error", (error) => {
+        output.push(Buffer.from(`failed to start opencode: ${error.message}`))
+        resolve(1)
+      })
       child.on("close", (code) => resolve(code ?? 1))
     })
     text = Buffer.concat(output).toString("utf-8")

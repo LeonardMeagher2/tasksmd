@@ -3,14 +3,14 @@ import { installTaskWorker, uninstallTaskWorker } from "../tasks-scheduler"
 import { reconcileTaskSchedulers, spawnWorker } from "../tasks-runtime"
 import { readState, writeState } from "../state"
 
-export function createWorkerTools(directory: string) {
+export function createWorkerTools(directory: string, serverUrl?: string) {
   return {
     tasks_start: tool({
       description: "Reconcile board and per-task schedulers, then run any pending work.",
       args: {},
       async execute() {
         await reconcileTaskSchedulers(directory)
-        spawnWorker(directory)
+        spawnWorker(directory, serverUrl)
         return "Schedulers reconciled."
       },
     }),

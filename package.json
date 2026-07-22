@@ -8,6 +8,9 @@
     "pack": "bun run --filter '*' pack",
     "change": "changeset add",
     "version": "changeset version",
+    "clean": "bun run scripts/clean.ts",
+    "dev": "bun run build && bun run scripts/dev-plugin.ts",
+    "fresh": "bun run clean && bun run dev",
     "release": "bun publish --cwd=packages/tasksmd && bun publish --cwd=packages/opencode-tasksmd"
   },
   "devDependencies": {

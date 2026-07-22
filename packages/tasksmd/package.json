@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@leonardmeagher2/tasksmd",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "The simplest API for reading and modifying TASKS.md boards — Markdown task checklists with YAML frontmatter",
   "author": {
     "name": "Leonard Meagher",

@@ -61,7 +61,7 @@ async function toastFinishedSession(client: PluginClient, directory: string, ses
   }
 }
 
-export function createEventHook(client: PluginClient, directory: string) {
+export function createEventHook(client: PluginClient, directory: string, serverUrl?: string) {
   return {
     event: async ({ event }: { event: any }) => {
       if (event.type === "session.idle") {
@@ -83,7 +83,7 @@ export function createEventHook(client: PluginClient, directory: string) {
         directory,
         setTimeout(() => {
           debounceTimers.delete(directory)
-          tryRunTask(directory).catch((error) => {
+          tryRunTask(directory, serverUrl).catch((error) => {
             console.error("[tasksmd] worker run failed:", error)
           })
         }, DEBOUNCE_MS),
