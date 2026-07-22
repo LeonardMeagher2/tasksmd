@@ -1,6 +1,15 @@
 # OpenCode Tasks
 
-OpenCode Tasks gives your project a simple work queue. Add work to `TASKS.md`, and OpenCode works through it in the background.
+OpenCode Tasks adds a simple background work queue to your OpenCode project.
+Add work to `TASKS.md`, and OpenCode works through it in the background.
+
+## What It Does
+
+- Lets OpenCode pick up pending tasks automatically.
+- Shows task progress in `TASKS.md`.
+- Lets unfinished work continue instead of starting over.
+- Limits how many tasks run at once.
+- Keeps blocked work visible without retrying it forever.
 
 ## Install
 
@@ -11,17 +20,6 @@ Add the plugin to your OpenCode config:
   "plugin": ["@leonardmeagher2/opencode-tasksmd"]
 }
 ```
-
-Restart OpenCode. The plugin installs the background worker for the project.
-
-## Why Use It
-
-- Keep work in the project, next to the code.
-- Let OpenCode pick up tasks while you are away.
-- See task progress in `TASKS.md`.
-- Continue unfinished work instead of starting over.
-- Limit how many tasks run at once.
-- Keep blocked work visible without retrying it forever.
 
 ## Add Work
 
@@ -39,9 +37,9 @@ For a larger task, link to a file anywhere in the project:
 
 The linked file can include background, details, and acceptance criteria.
 
-Indented subtasks stay with their parent task and are handled in one session.
+Indented subtasks stay under their parent task.
 
-## Task Progress
+## Task States
 
 ```text
 [ ]  Waiting
@@ -50,50 +48,61 @@ Indented subtasks stay with their parent task and are handled in one session.
 [!]  Blocked
 ```
 
-OpenCode marks work in progress. The task agent marks its own work done with the `tasks_done` tool after checking the result, or blocked with `tasks_blocked`. Blocked tasks stay visible and are not retried.
+OpenCode marks work in progress. The task agent marks work done with
+`tasks_done` after checking the result, or blocked with `tasks_blocked`.
 
 ## Settings
+
+### Board Defaults
 
 Add optional defaults at the top of `TASKS.md`:
 
 ```md
 ---
+every: 5 minutes
 model: ollama/unsloth/Qwen3.5-9B-GGUF:Q4_K_M
 agent: build
 max_active: 1
+tools:
+  webfetch: false
+  bash: false
 permission:
   bash: deny
 ---
 ```
 
-`model` chooses the default model.
+`every` sets a repeat schedule. On the board, it checks for new pending work at
+that interval. In a linked task file, it runs that task again on the interval.
+Use `false` or `0` to disable it. Examples: `5 minutes`, `1h`, `3600`, `false`.
 
-`agent` chooses which OpenCode agent runs tasks. By default, tasks run with your primary agent.
+`model` sets the default model.
 
-`max_active` limits concurrent work.
+`agent` sets which OpenCode agent runs tasks. By default, tasks use your main
+agent.
 
-`permission` sets task-level `allow`, `ask`, or `deny` rules.
+`max_active` limits how many tasks run at the same time.
 
-Linked task files can override the model and agent, and add stricter permissions for that task.
+`tools` turns tools on or off for the task session. The plugin always keeps
+`tasks_done` and `tasks_blocked` on, and `tasks_debug` off. Other tools use the
+agent's normal defaults.
 
-`tools` enables or disables tools for the task session. The plugin always
-forces `tasks_done` and `tasks_blocked` enabled and `tasks_debug` disabled —
-other tools default to the agent's normal set.
+`permission` sets what the task may do: `allow`, `ask`, or `deny`.
+In this plugin, attached sessions do not use these rules. The standalone CLI
+path passes them through.
 
-```md
----
-tools:
-  webfetch: false
-  bash: false
----
-```
+### Linked Task Files
+
+Linked task files can override the model and agent, and can use stricter
+permissions for that task.
 
 ## Sessions
 
-When OpenCode is already running, task sessions use it and appear with your other sessions. When it is closed, tasks still run on their own.
+When OpenCode is already running, task sessions use it and appear with your
+other sessions. When it is closed, tasks still run on their own.
 
 ## Controls
 
-Use `tasks_start` to reconcile schedulers and run pending work now.
+Your agent can use `tasks_start` to sync schedulers and run pending work now.
 
-Use `tasks_remove_schedules` to stop background processing and remove all schedulers.
+Or `tasks_stop` to stop background processing and remove all
+schedulers.

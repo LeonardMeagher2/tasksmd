@@ -1,18 +1,20 @@
 # tasksmd
 
-The simplest API for reading and modifying `TASKS.md` boards.
+`tasksmd` is a small library for reading and changing `TASKS.md` boards.
 
-A `TASKS.md` board is plain Markdown: a YAML frontmatter block for
-configuration, plus a checklist of tasks. It keeps a queue of work as text in
-your repo — any script, CLI, or agent can pick work up and report back without
-needing its own storage.
+`TASKS.md` is plain Markdown. It has YAML frontmatter at the top, then a
+checklist of tasks below.
 
-This package is the format's home. It parses boards, edits task markers
-safely, reads frontmatter, and gives you an opaque handle to a single task so
-your code works with tasks, not files.
+This package defines the format. It parses boards, updates task markers carefully, reads frontmatter, and gives you a handle to one task so your code works with tasks, not files.
 
-tasksmd is only the format. It assigns no meaning to frontmatter keys and no
-behavior to task states — the tool you build on top decides those.
+`tasksmd` defines the format only. It does not give meaning to frontmatter keys or task states. Your tool decides that.
+
+## What It Does
+
+- Parse a board.
+- Update one task marker at a time.
+- Read board frontmatter.
+- Work with tasks through a task handle.
 
 ## The format
 
@@ -27,8 +29,8 @@ priority: high
   - [ ] Subtasks ride along with their parent
 ```
 
-Frontmatter is free-form YAML; the keys above are examples, your tool defines
-its own. Tasks are checkbox lines in one of four states:
+Frontmatter is free-form YAML. The keys above are only examples. Tasks are
+checkbox lines in one of four states:
 
 | Marker | State    | Meaning        |
 | ------ | -------- | -------------- |
@@ -37,21 +39,19 @@ its own. Tasks are checkbox lines in one of four states:
 | `[x]`  | done     | completed      |
 | `[!]`  | blocked  | cannot proceed |
 
-What a state *triggers* — scheduling, retries, notifications — is up to your
-tool. A task may link to a Markdown file (`[text](path/file.md)`); the linked
-file's own frontmatter is merged over the board's when you ask for a task's
-config.
+What a state triggers, such as scheduling, retries, or notifications, is up to your tool.
+
+A task can link to another Markdown file, for example `[text](path/file.md)`. When you ask for a task's config, the linked file's frontmatter is merged over the board's frontmatter.
 
 ## Install
 
 ```sh
-bun add @leonardmeagher2/tasksmd
+npm install @leonardmeagher2/tasksmd
 ```
 
-## Task contexts
+## Working With A Board
 
-The easiest way to work with a board: open it, grab a task, and use opaque
-operations. No parsing, no file handling.
+The simplest way to use a board is to open it, pick a task, and use the task methods. You do not need to parse files yourself.
 
 ```ts
 import { openBoard, taskContext } from "@leonardmeagher2/tasksmd"
@@ -73,13 +73,18 @@ task.markPending()    // [ ]
 taskContext("/path/to/project", "add-a-health-check-endpoint").markDone()
 ```
 
-Every operation re-reads the file, edits exactly one marker line, and writes it
-back — frontmatter, other tasks, and indentation are preserved. Operations
-return `false` when the slug is not on the board instead of throwing.
+Each operation re-reads the file, changes one marker line, and writes it back.
+Frontmatter, other tasks, and indentation stay in place.
 
-## Pure functions
+A slug is the short ID used to find one task.
 
-For full control, the underlying functions are exported too:
+Operations return `false` when the slug is not on the board instead of throwing.
+
+## Advanced
+
+### Low-Level Functions
+
+For full control, the lower-level functions are exported too:
 
 ```ts
 import { parseChecklist, replaceTask } from "@leonardmeagher2/tasksmd"
@@ -92,7 +97,7 @@ board.roots        // top-level tasks with .subtasks attached
 replaceTask(markdown, "task-slug", "done") // updated markdown, or undefined
 ```
 
-## Frontmatter helpers
+### Frontmatter Helpers
 
 ```ts
 import {
@@ -100,9 +105,6 @@ import {
   mergeFrontmatter, // deep-merge two frontmatter records (override wins)
 } from "@leonardmeagher2/tasksmd"
 ```
-
-tasksmd deliberately imposes no schema on frontmatter. Whatever settings your
-tool has, parse and validate them in your tool.
 
 ## License
 

@@ -15,7 +15,7 @@ export function createWorkerTools(directory: string, serverUrl?: string) {
       },
     }),
 
-    tasks_remove_schedules: tool({
+    tasks_stop: tool({
       description: "Remove all board and per-task schedulers for this project.",
       args: {},
       async execute() {
