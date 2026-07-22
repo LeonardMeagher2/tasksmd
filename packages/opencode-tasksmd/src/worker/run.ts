@@ -5,7 +5,7 @@ import { createOpencodeClient } from "@opencode-ai/sdk"
 
 import { parseChecklist, replaceTask } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
-import { modelValue, taskPermissions } from "../config"
+import { modelValue, taskPermissions, taskTools } from "../config"
 import { readState, updateTask } from "../state"
 import { loadTaskConfig, log, projectRoot, tasksFile } from "./common"
 import { findOpencode, findServer, type ServerConnection } from "./server"
@@ -69,7 +69,7 @@ async function runAttached(
     body: {
       agent: agent || undefined,
       model: selectedModel,
-      tools: { tasks_done: true, tasks_blocked: true },
+      tools: { ...taskTools(taskConfig), tasks_done: true, tasks_blocked: true, tasks_debug: false },
       parts: [{ type: "text", text: prompt }],
     },
   })

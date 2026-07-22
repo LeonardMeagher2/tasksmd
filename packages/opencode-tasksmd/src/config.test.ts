@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { parseEvery, taskPermissions, permissionRules, modelValue } from "./config"
+import { parseEvery, taskPermissions, permissionRules, modelValue, taskTools } from "./config"
 
 describe("parseEvery", () => {
   test("returns 0 for false", () => {
@@ -99,6 +99,25 @@ describe("permissionRules", () => {
       { permission: "bash", pattern: "*.exe", action: "deny" },
       { permission: "bash", pattern: "*", action: "allow" },
     ])
+  })
+})
+
+describe("taskTools", () => {
+  test("extracts boolean toggles", () => {
+    expect(taskTools({ tools: { bash: false, write: true } })).toEqual({ bash: false, write: true })
+  })
+
+  test("filters non-boolean values", () => {
+    expect(taskTools({ tools: { write: true, count: 3, name: "foo" } })).toEqual({ write: true })
+  })
+
+  test("returns empty object when no tools key", () => {
+    expect(taskTools({})).toEqual({})
+  })
+
+  test("returns empty object when tools is not a mapping", () => {
+    expect(taskTools({ tools: "deny" })).toEqual({})
+    expect(taskTools({ tools: [1, 2] })).toEqual({})
   })
 })
 

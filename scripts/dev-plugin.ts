@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from "node:fs/promises"
+import { cp, mkdir } from "node:fs/promises"
 
 // Local development bundle: a single self-contained plugin file that OpenCode
 // can load without resolving any bare imports (the background dependency
@@ -21,10 +21,6 @@ if (!result.success) {
   for (const log of result.logs) console.error(log)
   process.exit(1)
 }
-
-// The config hook expects bundled skills next to the running plugin file.
-await rm(`${outDir}/skills`, { recursive: true, force: true })
-await cp("packages/opencode-tasksmd/src/skills", `${outDir}/skills`, { recursive: true })
 
 // The worker asset is installed from a sibling of the plugin file in
 // source/dist mode; in bundle mode we place it directly.

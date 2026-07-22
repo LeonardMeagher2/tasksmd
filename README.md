@@ -76,6 +76,18 @@ permission:
 
 Linked task files can override the model and agent, and add stricter permissions for that task.
 
+`tools` enables or disables tools for the task session. The plugin always
+forces `tasks_done` and `tasks_blocked` enabled and `tasks_debug` disabled —
+other tools default to the agent's normal set.
+
+```md
+---
+tools:
+  webfetch: false
+  bash: false
+---
+```
+
 ## Sessions
 
 When OpenCode is already running, task sessions use it and appear with your other sessions. When it is closed, tasks still run on their own.

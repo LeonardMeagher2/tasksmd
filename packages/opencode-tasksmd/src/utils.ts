@@ -4,7 +4,6 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 const pluginDir = path.dirname(fileURLToPath(import.meta.url))
-export const bundledSkillsDir = path.join(pluginDir, "skills")
 // dist ships worker.mjs; source mode falls back to worker.ts.
 const siblingWorker = ["worker.mjs", "worker.js", "worker.ts"]
   .map((name) => path.join(pluginDir, name))

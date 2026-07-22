@@ -1,4 +1,4 @@
-import { cp, mkdir, rm } from "node:fs/promises"
+import { mkdir, rm } from "node:fs/promises"
 
 await rm("dist", { recursive: true, force: true })
 await mkdir("dist", { recursive: true })
@@ -36,5 +36,3 @@ if (!worker.success) {
   for (const log of worker.logs) console.error(log)
   process.exit(1)
 }
-
-await cp("src/skills", "dist/skills", { recursive: true })
