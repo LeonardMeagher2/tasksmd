@@ -8,10 +8,9 @@ export function createWorkerTools(directory: string) {
     tasks_start: tool({
       description: "Reconcile board and per-task schedulers, then run any pending work.",
       args: {},
-      async execute(_args, ctx) {
-        const dir = ctx.directory || directory
-        await reconcileTaskSchedulers(dir)
-        spawnWorker(dir)
+      async execute() {
+        await reconcileTaskSchedulers(directory)
+        spawnWorker(directory)
         return "Schedulers reconciled."
       },
     }),
@@ -19,14 +18,13 @@ export function createWorkerTools(directory: string) {
     tasks_remove_schedules: tool({
       description: "Remove all board and per-task schedulers for this project.",
       args: {},
-      async execute(_args, ctx) {
-        const dir = ctx.directory || directory
-        const state = readState(dir)
+      async execute() {
+        const state = readState(directory)
         for (const slug of Object.keys(state.schedulers)) {
-          await uninstallTaskWorker(dir, slug)
+          await uninstallTaskWorker(directory, slug)
         }
         state.schedulers = {}
-        writeState(dir, state)
+        writeState(directory, state)
         return "All schedulers removed."
       },
     }),

@@ -1,8 +1,8 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@leonardmeagher2/tasksmd",
-  "version": "0.1.0",
-  "description": "Parse and manage TASKS.md files — the core format library for the tasksmd ecosystem",
+  "version": "0.2.0",
+  "description": "The simplest API for reading and modifying TASKS.md boards — Markdown task checklists with YAML frontmatter",
   "author": {
     "name": "Leonard Meagher",
     "email": "LeonardMeagher2@gmail.com"
@@ -11,16 +11,30 @@
   "main": "dist/index.js",
   "files": [
     "dist",
+    "README.md",
     "LICENSE"
   ],
   "scripts": {
     "build": "bun run build.ts",
+    "pack": "bun pm pack --dry-run",
+    "prepublishOnly": "bun run build",
     "test": "bun test"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "deepmerge": "^4.3.1",
-    "parse-duration-ms": "^0.1.0"
+    "yaml": "^2.8.0"
   },
+  "keywords": [
+    "tasks",
+    "tasksmd",
+    "markdown",
+    "checklist",
+    "frontmatter",
+    "task-board"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",

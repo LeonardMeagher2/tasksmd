@@ -1,4 +1,4 @@
-import { frontmatterData } from "./task-config"
+import { frontmatter } from "./frontmatter"
 
 export type TaskState = "pending" | "active" | "done" | "blocked"
 
@@ -16,7 +16,10 @@ export type ChecklistTask = {
 
 export type Checklist = {
   frontmatter: Record<string, unknown>
+  /** Flat list of every checkbox line, including subtasks. */
   tasks: ChecklistTask[]
+  /** Top-level tasks only; subtasks reachable via `.subtasks`. */
+  roots: ChecklistTask[]
 }
 
 const STATE_NORMALIZE: Record<string, TaskState> = {
@@ -86,7 +89,7 @@ function buildTree(tasks: ChecklistTask[]): ChecklistTask[] {
 export function parseChecklist(content: string): Checklist {
   const lines = content.split(/\r?\n/)
 
-  const frontmatter = frontmatterData(content)
+  const matter = frontmatter(content)
   let bodyStart = 0
 
   if (lines.length > 0 && lines[0].trim() === "---") {
@@ -111,9 +114,9 @@ export function parseChecklist(content: string): Checklist {
     }
   }
 
-  buildTree(tasks)
+  const roots = buildTree(tasks)
 
-  return { frontmatter, tasks }
+  return { frontmatter: matter, tasks, roots }
 }
 
 export function replaceTask(content: string, slug: string, toState: TaskState): string | undefined {
@@ -122,7 +125,7 @@ export function replaceTask(content: string, slug: string, toState: TaskState): 
 
   for (let i = 0; i < lines.length; i++) {
     if (parseCheckboxLine(lines[i], i)?.slug === slug) {
-      lines[i] = lines[i].replace(/^(- \s*)\[[^\]]{0,2}\]/, `$1[${marker}]`)
+      lines[i] = lines[i].replace(/^(\s*- \[)[^\]]{0,2}(\])/, `$1${marker}$2`)
       return lines.join("\n")
     }
   }

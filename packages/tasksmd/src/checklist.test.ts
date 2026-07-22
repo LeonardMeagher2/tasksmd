@@ -64,6 +64,13 @@ every: 5 minutes
     expect(result.tasks[0].subtasks[0].subtasks[0].text).toBe("Grandchild")
   })
 
+  test("roots contains top-level tasks only", () => {
+    const result = parseChecklist("- [ ] Parent\n  - [ ] Child\n- [ ] Second")
+    expect(result.roots).toHaveLength(2)
+    expect(result.roots.map((t) => t.slug)).toEqual(["parent", "second"])
+    expect(result.roots[0].subtasks.map((t) => t.slug)).toEqual(["child"])
+  })
+
   test("captures body content after task line", () => {
     const content = `- [ ] Task
   Some body text
@@ -124,6 +131,12 @@ every: 5 minutes
     const content = "- [ ] First\n- [ ] First"
     const result = replaceTask(content, "first", "done")
     expect(result).toBe("- [x] First\n- [ ] First")
+  })
+
+  test("preserves indentation of subtasks", () => {
+    const content = "- [ ] Parent\n  - [ ] Child"
+    const result = replaceTask(content, "child", "active")
+    expect(result).toBe("- [ ] Parent\n  - [~] Child")
   })
 })
 

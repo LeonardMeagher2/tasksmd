@@ -7,6 +7,7 @@ const result = await Bun.build({
   outdir: "dist",
   target: "bun",
   compile: false,
+  external: ["deepmerge", "yaml"],
   format: "esm",
   minify: true,
 })

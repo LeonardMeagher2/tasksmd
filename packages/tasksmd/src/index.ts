@@ -10,13 +10,15 @@ export type {
 } from "./checklist"
 
 export {
-  frontmatterData,
-  parseEvery,
+  frontmatter,
   mergeFrontmatter,
-  taskPermissions,
-  permissionRules,
-  modelValue,
-} from "./task-config"
+} from "./frontmatter"
+
+export {
+  openBoard,
+  taskContext,
+} from "./context"
 export type {
-  PermissionConfig,
-} from "./task-config"
+  Board,
+  TaskContext,
+} from "./context"

@@ -1,62 +1,13 @@
-import deepmerge from "deepmerge"
 import parseDuration from "parse-duration-ms"
+
+/**
+ * Plugin-specific interpretations of TASKS.md frontmatter. The tasksmd core
+ * parses frontmatter generically; the meanings below belong to this plugin.
+ */
 
 export type PermissionConfig = Record<string, unknown>
 
-function parseYamlValue(raw: string): unknown {
-  const trimmed = raw.trim()
-  if (trimmed === "true" || trimmed === "yes") return true
-  if (trimmed === "false" || trimmed === "no") return false
-  if (trimmed === "null" || trimmed === "~") return null
-  if ((trimmed.startsWith('"') && trimmed.endsWith('"')) || (trimmed.startsWith("'") && trimmed.endsWith("'"))) return trimmed.slice(1, -1)
-  const asNumber = Number(trimmed)
-  if (Number.isFinite(asNumber)) return asNumber
-  return trimmed
-}
-
-function parseYamlLines(lines: string[]): Record<string, unknown> {
-  const result: Record<string, unknown> = {}
-  const stack: { obj: Record<string, unknown>; indent: number }[] = [{ obj: result, indent: -1 }]
-
-  for (const line of lines) {
-    const trimmed = line.trim()
-    if (!trimmed || trimmed.startsWith("#")) continue
-
-    const indent = line.length - line.trimStart().length
-    const colonIndex = trimmed.indexOf(":")
-    if (colonIndex === -1) continue
-
-    const key = trimmed.slice(0, colonIndex).trim()
-    const value = trimmed.slice(colonIndex + 1).trim()
-
-    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
-      stack.pop()
-    }
-
-    const current = stack[stack.length - 1]
-    if (value === "") {
-      const nested: Record<string, unknown> = {}
-      current.obj[key] = nested
-      stack.push({ obj: nested, indent })
-    } else {
-      current.obj[key] = parseYamlValue(value)
-    }
-  }
-
-  return result
-}
-
-export function frontmatterData(content: string): Record<string, unknown> {
-  try {
-    const parts = content.split(/^---\s*$/m)
-    if (parts.length < 3) return {}
-    const lines = parts[1].split(/\r?\n/).filter((l) => l.trim() && !l.trim().startsWith("#"))
-    return parseYamlLines(lines)
-  } catch {
-    return {}
-  }
-}
-
+/** Parse an `every` value into seconds. `false`/`0` disable; unparseable values fall back. */
 export function parseEvery(value: unknown, fallback = 300): number {
   if (value === false || value === 0 || value === "0") return 0
   if (value === null || value === undefined) return fallback
@@ -71,10 +22,7 @@ export function parseEvery(value: unknown, fallback = 300): number {
   return Number.isFinite(asNumber) ? Math.round(asNumber) : fallback
 }
 
-export function mergeFrontmatter(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
-  return deepmerge(base, override)
-}
-
+/** Extract valid OpenCode permission entries (allow/ask/deny) from frontmatter. */
 export function taskPermissions(data: Record<string, unknown>): PermissionConfig {
   const permission = data.permission
   if (!permission || typeof permission !== "object" || Array.isArray(permission)) return {}
@@ -89,6 +37,7 @@ export function taskPermissions(data: Record<string, unknown>): PermissionConfig
   }))
 }
 
+/** Convert permission config into an OpenCode permission ruleset. */
 export function permissionRules(permissions: PermissionConfig): Array<Record<string, string>> {
   return Object.entries(permissions).flatMap(([permission, value]) => {
     if (typeof value === "string") return [{ permission, pattern: "*", action: value }]
@@ -99,6 +48,7 @@ export function permissionRules(permissions: PermissionConfig): Array<Record<str
   })
 }
 
+/** Parse a "provider/model" string into OpenCode's model identifiers. */
 export function modelValue(value: string): { providerID: string; modelID: string } | undefined {
   const separator = value.indexOf("/")
   if (separator <= 0) return undefined

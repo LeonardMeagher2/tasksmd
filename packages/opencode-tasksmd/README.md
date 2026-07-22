@@ -8,7 +8,7 @@ Add the plugin to your OpenCode config:
 
 ```json
 {
-  "plugin": ["opencode-tasks"]
+  "plugin": ["@leonardmeagher2/opencode-tasksmd"]
 }
 ```
 
@@ -50,7 +50,7 @@ Indented subtasks stay with their parent task and are handled in one session.
 [!]  Blocked
 ```
 
-OpenCode marks work in progress. The task agent marks work done after checking the result. Blocked tasks stay visible and are not retried.
+OpenCode marks work in progress. The task agent marks its own work done with the `tasks_done` tool after checking the result, or blocked with `tasks_blocked`. Blocked tasks stay visible and are not retried.
 
 ## Settings
 
@@ -59,6 +59,7 @@ Add optional defaults at the top of `TASKS.md`:
 ```md
 ---
 model: ollama/unsloth/Qwen3.5-9B-GGUF:Q4_K_M
+agent: build
 max_active: 1
 permission:
   bash: deny
@@ -67,11 +68,13 @@ permission:
 
 `model` chooses the default model.
 
+`agent` chooses which OpenCode agent runs tasks. By default, tasks run with your primary agent.
+
 `max_active` limits concurrent work.
 
 `permission` sets task-level `allow`, `ask`, or `deny` rules.
 
-Linked task files can override the model and add stricter permissions for that task.
+Linked task files can override the model and agent, and add stricter permissions for that task.
 
 ## Sessions
 
@@ -79,6 +82,6 @@ When OpenCode is already running, task sessions use it and appear with your othe
 
 ## Controls
 
-Use `start_tasks_worker` to install or restart background processing.
+Use `tasks_start` to reconcile schedulers and run pending work now.
 
-Use `stop_tasks_worker` to stop background processing.
+Use `tasks_remove_schedules` to stop background processing and remove all schedulers.

@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@leonardmeagher2/opencode-tasksmd",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Background task queue for OpenCode projects, powered by TASKS.md",
   "author": {
     "name": "Leonard Meagher",
@@ -16,12 +16,15 @@
   ],
   "scripts": {
     "build": "bun run build.ts",
-    "pack": "npm pack --dry-run",
+    "pack": "bun pm pack --dry-run",
+    "prepublishOnly": "bun run build",
     "test": "bun test"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "dependencies": {
     "@leonardmeagher2/tasksmd": "workspace:*",
-    "deepmerge": "^4.3.1",
     "parse-duration-ms": "^0.1.0"
   },
   "keywords": [

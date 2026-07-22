@@ -3,16 +3,18 @@ import { existsSync, mkdirSync, writeFileSync, rmSync } from "node:fs"
 import path from "node:path"
 import os from "node:os"
 
-function run(cmd: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("cmd.exe", ["/c", cmd], { windowsHide: true, stdio: "ignore" })
-    child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Exit code ${code}: ${cmd}`)))
-    child.on("error", reject)
-  })
-}
+import { workerAsset } from "./utils"
 
 type Platform = "darwin" | "linux" | "win32"
 const platform: Platform = os.platform() as Platform
+
+function run(command: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, { windowsHide: true, stdio: "ignore" })
+    child.on("close", (code) => code === 0 ? resolve() : reject(new Error(`Exit code ${code}: ${command} ${args.join(" ")}`)))
+    child.on("error", reject)
+  })
+}
 
 function dirSlug(dir: string): string {
   return dir.replace(/[^a-zA-Z0-9]/g, "-").replace(/^-+|-+$/g, "").toLowerCase()
@@ -20,13 +22,10 @@ function dirSlug(dir: string): string {
 
 function workerCmd(dir: string, taskSlug?: string): { program: string; args: string[] } {
   const program = process.execPath
-  const worker = existsSync(path.join(dir, ".opencode", "tasks", "worker.js"))
-    ? path.join(dir, ".opencode", "tasks", "worker.js")
-    : path.join(dir, ".opencode", "tasks", "worker.ts")
   const extra = taskSlug ? ["--task", taskSlug] : []
   return {
     program,
-    args: ["run", worker, ...extra],
+    args: ["run", workerAsset(dir), ...extra],
   }
 }
 
@@ -82,14 +81,14 @@ ${args}
 </plist>`
 
   writeFileSync(plist, content, "utf-8")
-  await run(`launchctl load ${plist}`)
+  await run("launchctl", ["load", plist])
   return `Task worker installed (launchd): ${taskLabel(dir, slug)}`
 }
 
 async function uninstallTaskLaunchd(dir: string, slug: string): Promise<string> {
   const plist = taskPlistPath(dir, slug)
   if (!existsSync(plist)) return `No worker plist found for ${slug || "board"} in ${dir}.`
-  try { await run(`launchctl unload ${plist}`) } catch { /* ok */ }
+  try { await run("launchctl", ["unload", plist]) } catch { /* ok */ }
   rmSync(plist, { force: true })
   return `Task worker removed (launchd): ${taskLabel(dir, slug)}`
 }
@@ -133,9 +132,9 @@ WantedBy=timers.target
 
   writeFileSync(path.join(sdDir, `${name}.service`), service, "utf-8")
   writeFileSync(path.join(sdDir, `${name}.timer`), timer, "utf-8")
-  await run(`systemctl --user daemon-reload`)
-  await run(`systemctl --user enable ${name}.timer`)
-  await run(`systemctl --user start ${name}.timer`)
+  await run("systemctl", ["--user", "daemon-reload"])
+  await run("systemctl", ["--user", "enable", `${name}.timer`])
+  await run("systemctl", ["--user", "start", `${name}.timer`])
 
   return `Task worker installed (systemd): ${name}`
 }
@@ -144,8 +143,8 @@ async function uninstallTaskSystemd(dir: string, slug: string): Promise<string> 
   const name = taskServiceName(dir, slug)
   const sdDir = path.join(os.homedir(), ".config", "systemd", "user")
 
-  try { await run(`systemctl --user stop ${name}.timer 2>/dev/null`) } catch { /* ok */ }
-  try { await run(`systemctl --user disable ${name}.timer 2>/dev/null`) } catch { /* ok */ }
+  try { await run("systemctl", ["--user", "stop", `${name}.timer`]) } catch { /* ok */ }
+  try { await run("systemctl", ["--user", "disable", `${name}.timer`]) } catch { /* ok */ }
 
   rmSync(path.join(sdDir, `${name}.timer`), { force: true })
   rmSync(path.join(sdDir, `${name}.service`), { force: true })
@@ -159,7 +158,7 @@ function taskTaskName(dir: string, slug: string): string {
 function taskXml(wrapperPath: string, interval: number): string {
   const minutes = Math.max(1, Math.round(interval / 60))
   const now = new Date().toISOString().replace(/\.\d{3}Z$/, "")
-  const schedUser = `${require("os").userInfo().username}\\${require("os").hostname()}`
+  const schedUser = `${os.userInfo().username}\\${os.hostname()}`
   return `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
@@ -204,8 +203,9 @@ async function installTaskWin32(dir: string, slug: string, interval: number): Pr
   const wrapperPath = winWorkerWrapper(dir, slug)
   const xml = taskXml(wrapperPath, interval)
   const xmlPath = path.join(dir, ".opencode", "tasks", `sched-${slug || "board"}.xml`)
-  writeFileSync(xmlPath, xml, "utf16le")
-  await run(`schtasks /Create /TN "${name}" /XML "${xmlPath}" /F`)
+  // schtasks rejects UTF-16 XML without a byte order mark.
+  writeFileSync(xmlPath, `﻿${xml}`, "utf16le")
+  await run("schtasks", ["/Create", "/TN", name, "/XML", xmlPath, "/F"])
   rmSync(xmlPath, { force: true })
   return `Task worker installed (Task Scheduler): ${name}`
 }
@@ -213,7 +213,7 @@ async function installTaskWin32(dir: string, slug: string, interval: number): Pr
 async function uninstallTaskWin32(dir: string, slug: string): Promise<string> {
   const name = taskTaskName(dir, slug)
   try {
-    await run(`schtasks /Delete /TN "${name}" /F`)
+    await run("schtasks", ["/Delete", "/TN", name, "/F"])
   } catch { /* ok */ }
   const slugPart = slug ? `-${slug}` : ""
   const wrapperPath = path.join(dir, ".opencode", "tasks", `worker${slugPart}.cmd`)

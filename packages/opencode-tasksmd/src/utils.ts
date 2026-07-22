@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process"
-import { copyFileSync, existsSync, mkdirSync } from "node:fs"
+import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 
@@ -19,12 +19,23 @@ export function opencodePath(): string {
   }
 }
 
+/** Path of the installed worker script in a project (prefers the built .js). */
+export function workerAsset(directory: string): string {
+  const js = path.join(directory, ".opencode", "tasks", "worker.js")
+  if (existsSync(js)) return js
+  return path.join(directory, ".opencode", "tasks", "worker.ts")
+}
+
 export function installWorkerAsset(directory: string): void {
   const targetName = bundledWorker.endsWith(".js") ? "worker.js" : "worker.ts"
+  const staleName = targetName === "worker.js" ? "worker.ts" : "worker.js"
   const target = path.join(directory, ".opencode", "tasks", targetName)
-  if (path.resolve(target) === path.resolve(bundledWorker)) return
-  mkdirSync(path.dirname(target), { recursive: true })
-  copyFileSync(bundledWorker, target)
+  if (path.resolve(target) !== path.resolve(bundledWorker)) {
+    mkdirSync(path.dirname(target), { recursive: true })
+    copyFileSync(bundledWorker, target)
+  }
+  // Never leave both variants behind — the stale one would shadow the fresh copy.
+  rmSync(path.join(directory, ".opencode", "tasks", staleName), { force: true })
 }
 
 export function hasTasksFile(directory: string): boolean {

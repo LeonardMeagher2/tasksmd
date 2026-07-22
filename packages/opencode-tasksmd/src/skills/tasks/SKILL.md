@@ -13,7 +13,7 @@ Frontmatter for config:
 
 ```yaml
 ---
-model: unsloth/Qwen3.5-9B-GGUF:Q4_K_M
+model: ollama/unsloth/Qwen3.5-9B-GGUF:Q4_K_M
 max_active: 1
 permission:
   bash: deny
@@ -49,7 +49,7 @@ The linked file has frontmatter (optional `model` override) and the full prompt 
 
 ```markdown
 ---
-model: unsloth/Qwen3.5-1.5B-GGUF:Q4_K_M
+model: ollama/unsloth/Qwen3.5-1.5B-GGUF:Q4_K_M
 ---
 
 Rewrite the auth system from session cookies to JWT tokens.
@@ -64,3 +64,4 @@ Acceptance criteria:
 - Only add tasks to TASKS.md (append `- [ ]` lines)
 - Worker state lives outside the project.
 - Worker-managed markers describe execution status.
+- Task agents update their own status with the `tasks_done` and `tasks_blocked` tools.

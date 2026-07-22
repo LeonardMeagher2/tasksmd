@@ -15,23 +15,3 @@ export async function showToast(
     // TUI may not be available (headless, web)
   }
 }
-
-export async function sendInlineStatus(
-  client: PluginClient,
-  sessionID: string,
-  text: string,
-  agent?: string,
-): Promise<void> {
-  try {
-    await client.session.prompt({
-      path: { id: sessionID },
-      body: {
-        noReply: true,
-        agent,
-        parts: [{ type: "text", text, ignored: true }],
-      },
-    })
-  } catch {
-    // Session may not be active
-  }
-}

@@ -5,6 +5,12 @@
   "scripts": {
     "build": "bun run --filter '*' build",
     "test": "bun run --filter '*' test",
-    "pack": "bun run --filter '*' pack"
+    "pack": "bun run --filter '*' pack",
+    "change": "changeset add",
+    "version": "changeset version",
+    "release": "bun publish --cwd=packages/tasksmd && bun publish --cwd=packages/opencode-tasksmd"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.31.1"
   }
 }

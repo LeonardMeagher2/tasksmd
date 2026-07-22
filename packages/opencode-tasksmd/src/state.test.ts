@@ -25,7 +25,7 @@ describe("stateDir", () => {
     process.env.LOCALAPPDATA = "C:\\Users\\test\\AppData\\Local"
     try {
       const result = stateDir("C:\\project")
-      expect(result).toStartWith("C:\\Users\\test\\AppData\\Local\\opencode-tasks\\")
+      expect(result).toStartWith("C:\\Users\\test\\AppData\\Local\\opencode-tasksmd\\")
     } finally {
       process.env.LOCALAPPDATA = original
     }
