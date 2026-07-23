@@ -1,4 +1,4 @@
-import { frontmatter } from "./frontmatter"
+import { frontmatter, serializeFrontmatter } from "./frontmatter"
 
 export type TaskState = "pending" | "active" | "done" | "blocked"
 
@@ -20,6 +20,14 @@ export type Checklist = {
   tasks: ChecklistTask[]
   /** Top-level tasks only; subtasks reachable via `.subtasks`. */
   roots: ChecklistTask[]
+}
+
+export type TaskInput = {
+  text: string
+  state?: TaskState
+  link?: string
+  /** Slug of an existing task to use as the parent. */
+  parent?: string
 }
 
 const STATE_NORMALIZE: Record<string, TaskState> = {
@@ -131,4 +139,70 @@ export function replaceTask(content: string, slug: string, toState: TaskState): 
   }
 
   return undefined
+}
+
+function taskLine(input: TaskInput, indent: number): string {
+  const marker = STATE_MARKER[input.state ?? "pending"]
+  const body = input.link ? `[${input.text}](${input.link})` : input.text
+  return `${" ".repeat(indent)}- [${marker}] ${body}`
+}
+
+/** Create a new board document with optional frontmatter. */
+export function createChecklist(values: Record<string, unknown> = {}): string {
+  return `${serializeFrontmatter(values)}\n`
+}
+
+/** Insert a task, returning undefined for an invalid parent or duplicate slug. */
+export function insertTask(content: string, input: TaskInput): string | undefined {
+  const slug = slugify(input.text)
+  if (!slug) return undefined
+
+  const parsed = parseChecklist(content)
+  if (parsed.tasks.some((task) => task.slug === slug)) return undefined
+
+  const lines = content.split(/\r?\n/)
+  let insertAt = lines.length
+  let indent = 0
+
+  if (input.parent) {
+    const parent = parsed.tasks.find((task) => task.slug === input.parent)
+    if (!parent) return undefined
+
+    indent = parent.indent + 2
+    const descendants = parsed.tasks.filter((task) => task.line > parent.line && task.indent > parent.indent)
+    const anchor = descendants.at(-1) ?? parent
+    insertAt = anchor.line + 1
+    while (insertAt < lines.length && !parseCheckboxLine(lines[insertAt], insertAt)) {
+      insertAt++
+    }
+  } else {
+    insertAt = lines.length
+  }
+
+  if (parsed.tasks.length === 0) {
+    if (insertAt > 0 && lines[insertAt - 1].trim() === "") insertAt--
+  } else {
+    while (insertAt > 0 && lines[insertAt - 1].trim() === "") insertAt--
+  }
+
+  lines.splice(insertAt, 0, taskLine(input, indent))
+  return lines.join("\n")
+}
+
+/** Remove a task and its nested subtasks, returning undefined when not found. */
+export function removeTask(content: string, slug: string): string | undefined {
+  const parsed = parseChecklist(content)
+  const task = parsed.tasks.find((candidate) => candidate.slug === slug)
+  if (!task) return undefined
+
+  const lines = content.split(/\r?\n/)
+  let end = task.line + 1
+  while (end < lines.length) {
+    const next = parsed.tasks.find((candidate) => candidate.line === end)
+    if (next && next.indent <= task.indent) break
+    end++
+  }
+
+  lines.splice(task.line, end - task.line)
+  return lines.join("\n")
 }
