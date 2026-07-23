@@ -1,5 +1,11 @@
 # @leonardmeagher2/opencode-tasksmd
 
+## 0.5.0
+
+### Minor Changes
+
+- Fix task permission model
+
 ## 0.4.0
 
 ### Minor Changes
