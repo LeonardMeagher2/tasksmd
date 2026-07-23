@@ -5,7 +5,7 @@ import { createOpencodeClient } from "@opencode-ai/sdk"
 
 import { parseChecklist, replaceTask } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
-import { modelValue, taskPermissions, taskTools } from "../config"
+import { modelValue, permissionRules, taskPermissions } from "../config"
 import { readState, updateTask } from "../state"
 import { loadTaskConfig, log, projectRoot, tasksFile } from "./common"
 import { findOpencode, findServer, type ServerConnection } from "./server"
@@ -21,6 +21,64 @@ ${isRetry ? "- In progress already — check what is done, then finish it.\n" : 
 - Call tasks_done when complete, or tasks_blocked with the reason you are stuck.`
 }
 
+type PermissionRule = Record<string, string>
+
+function ruleKey(rule: PermissionRule): string {
+  return `${rule.permission}\u0000${rule.pattern}\u0000${rule.action}`
+}
+
+export function sessionPermissionRules(taskConfig: Record<string, unknown>): PermissionRule[] {
+  return [
+    ...permissionRules(taskPermissions(taskConfig)),
+    { permission: "tasks_done", pattern: "*", action: "allow" },
+    { permission: "tasks_blocked", pattern: "*", action: "allow" },
+    { permission: "tasks_debug", pattern: "*", action: "deny" },
+  ]
+}
+
+export async function prepareAttachedSession(
+  client: any,
+  directory: string,
+  sessionId: string,
+  title: string,
+  permission: PermissionRule[],
+): Promise<string> {
+  let id = sessionId
+
+  if (id) {
+    const existing = await client.session.get({ path: { id }, query: { directory } })
+    if (existing.error) {
+      id = ""
+    } else if (permission.length > 0) {
+      const current = Array.isArray(existing.data?.permission) ? (existing.data.permission as PermissionRule[]) : []
+      const currentRules = new Set(current.map(ruleKey))
+      const missing = permission.filter((rule) => !currentRules.has(ruleKey(rule)))
+      if (missing.length > 0) {
+        const updated = await client.session.update({
+          path: { id },
+          query: { directory },
+          body: { permission: missing },
+        })
+        if (updated?.error) throw new Error(`Failed to apply task permissions: ${JSON.stringify(updated.error)}`)
+      }
+    }
+  }
+
+  if (!id) {
+    const created = await client.session.create({
+      body: {
+        title,
+        ...(permission.length > 0 ? { permission } : {}),
+      },
+      query: { directory },
+    })
+    if (created?.error) throw new Error(`Failed to create task session: ${JSON.stringify(created.error)}`)
+    id = created.data?.id || created.id || ""
+  }
+
+  return id
+}
+
 async function runAttached(
   server: ServerConnection,
   slug: string,
@@ -28,7 +86,7 @@ async function runAttached(
   model: string,
   agent: string,
   prompt: string,
-  permissions: Record<string, unknown>,
+  taskConfig: Record<string, unknown>,
 ): Promise<{ session: string; output: string }> {
   const client = createOpencodeClient({
     baseUrl: server.url,
@@ -36,26 +94,8 @@ async function runAttached(
     directory: projectRoot,
   }) as any
   const selectedModel = modelValue(model)
-  let id = sessionId
-
-  // A stored session may have been deleted from the server — start fresh then.
-  if (id) {
-    const existing = await client.session.get({ path: { id }, query: { directory: projectRoot } })
-    if (existing.error) {
-      log(`task=${slug} session=${id} action=discard reason=session-gone`)
-      id = ""
-    }
-  }
-
-  // Note: the v1 session API has no per-session permission ruleset — task
-  // `permission` frontmatter only takes effect in standalone (CLI) mode.
-  if (!id) {
-    const created = await client.session.create({
-      body: { title: `task:${slug}` },
-      query: { directory: projectRoot },
-    })
-    id = created.data?.id || created.id || ""
-  }
+  const rules = sessionPermissionRules(taskConfig)
+  const id = await prepareAttachedSession(client, projectRoot, sessionId, `task:${slug}`, rules)
   if (!id) throw new Error("OpenCode did not return a session ID")
 
   updateTask(projectRoot, slug, { pid: process.pid, session: id, status: "running" })
@@ -69,7 +109,6 @@ async function runAttached(
     body: {
       agent: agent || undefined,
       model: selectedModel,
-      tools: { ...taskTools(taskConfig), tasks_done: true, tasks_blocked: true, tasks_debug: false },
       parts: [{ type: "text", text: prompt }],
     },
   })
@@ -156,7 +195,7 @@ export async function runTask(task: ChecklistTask, content: string, session: str
   let workerPid = process.pid
   if (server) {
     try {
-      const result = await runAttached(server, task.slug, session, model, agent, prompt, taskPermissionRules)
+      const result = await runAttached(server, task.slug, session, model, agent, prompt, taskConfig)
       sessionId = result.session
       text = result.output
     } catch (error) {

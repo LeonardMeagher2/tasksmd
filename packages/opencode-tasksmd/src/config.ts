@@ -54,12 +54,3 @@ export function modelValue(value: string): { providerID: string; modelID: string
   if (separator <= 0) return undefined
   return { providerID: value.slice(0, separator), modelID: value.slice(separator + 1) }
 }
-
-/** Extract valid tool toggles (boolean values) from frontmatter. */
-export function taskTools(data: Record<string, unknown>): Record<string, boolean> {
-  const tools = data.tools
-  if (!tools || typeof tools !== "object" || Array.isArray(tools)) return {}
-  return Object.fromEntries(
-    Object.entries(tools).filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean"),
-  )
-}

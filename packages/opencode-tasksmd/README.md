@@ -63,9 +63,6 @@ every: 5 minutes
 model: ollama/unsloth/Qwen3.5-9B-GGUF:Q4_K_M
 agent: build
 max_active: 1
-tools:
-  webfetch: false
-  bash: false
 permission:
   bash: deny
 ---
@@ -82,13 +79,11 @@ agent.
 
 `max_active` limits how many tasks run at the same time.
 
-`tools` turns tools on or off for the task session. The plugin always keeps
-`tasks_done` and `tasks_blocked` on, and `tasks_debug` off. Other tools use the
-agent's normal defaults.
-
-`permission` sets what the task may do: `allow`, `ask`, or `deny`.
-In this plugin, attached sessions do not use these rules. The standalone CLI
-path passes them through.
+`permission` controls what the task may do: `allow`, `ask`, or `deny`.
+Use it for all tool access, including patterns such as `bash: deny`.
+This plugin writes those rules onto the session before it starts prompting, so
+attached sessions use them too. The standalone CLI path also passes them
+through.
 
 ### Linked Task Files
 
