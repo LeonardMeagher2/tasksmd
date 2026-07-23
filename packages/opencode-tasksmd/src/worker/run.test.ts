@@ -1,6 +1,14 @@
 import { describe, expect, test } from "bun:test"
 
-import { prepareAttachedSession, sessionPermissionRules } from "./run"
+import { prepareAttachedSession, sessionIsBusy, sessionPermissionRules } from "./run"
+
+describe("sessionIsBusy", () => {
+  test("only treats a present non-idle status as busy", () => {
+    expect(sessionIsBusy(undefined)).toBe(false)
+    expect(sessionIsBusy({ type: "idle" })).toBe(false)
+    expect(sessionIsBusy({ type: "working" })).toBe(true)
+  })
+})
 
 describe("sessionPermissionRules", () => {
   test("keeps task permissions while enabling only worker status tools", () => {

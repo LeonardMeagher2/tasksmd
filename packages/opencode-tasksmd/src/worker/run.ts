@@ -79,6 +79,10 @@ export async function prepareAttachedSession(
   return id
 }
 
+export function sessionIsBusy(status: { type?: string } | undefined): boolean {
+  return Boolean(status && status.type !== "idle")
+}
+
 async function runAttached(
   server: ServerConnection,
   slug: string,
@@ -87,7 +91,7 @@ async function runAttached(
   agent: string,
   prompt: string,
   taskConfig: Record<string, unknown>,
-): Promise<{ session: string; output: string }> {
+): Promise<{ session: string; skipped: boolean }> {
   const client = createOpencodeClient({
     baseUrl: server.url,
     headers: server.headers,
@@ -98,11 +102,18 @@ async function runAttached(
   const id = await prepareAttachedSession(client, projectRoot, sessionId, `task:${slug}`, rules)
   if (!id) throw new Error("OpenCode did not return a session ID")
 
-  updateTask(projectRoot, slug, { pid: process.pid, session: id, status: "running" })
+  const statuses = await client.session.status({ query: { directory: projectRoot } })
+  const status = statuses.data?.[id]
+  if (status?.type === "retry") throw new Error(`session retry failed: ${status.message}`)
+  if (sessionIsBusy(status)) {
+    log(`task=${slug} session=${id} status=${status.type} action=skip`)
+    return { session: id, skipped: true }
+  }
 
-  // Fire-and-poll: the synchronous message endpoint can hold the request open
-  // past completion on some servers. promptAsync returns immediately; we poll
-  // session status until the turn is done.
+  // Record the session before prompting so its task tools can resolve the task.
+  updateTask(projectRoot, slug, { pid: undefined, session: id, status: "running" })
+
+  // The server continues the turn after promptAsync returns.
   const sent = await client.session.promptAsync({
     path: { id },
     query: { directory: projectRoot },
@@ -113,25 +124,7 @@ async function runAttached(
     },
   })
   if (sent.error) throw new Error(JSON.stringify(sent.error))
-
-  const deadline = Date.now() + 30 * 60 * 1000
-  for (;;) {
-    await new Promise((resolve) => setTimeout(resolve, 3000))
-    const statuses = await client.session.status({ query: { directory: projectRoot } })
-    const status = statuses.data?.[id]
-    if (!status || status.type === "idle") break
-    if (status.type === "retry") throw new Error(`session retry failed: ${status.message}`)
-    if (Date.now() > deadline) throw new Error("session timed out after 30 minutes")
-  }
-
-  let output = ""
-  try {
-    const messages = await client.session.messages({ path: { id }, query: { directory: projectRoot, limit: 1 } })
-    output = JSON.stringify(messages.data ?? messages)
-  } catch {
-    output = "{}"
-  }
-  return { session: id, output }
+  return { session: id, skipped: false }
 }
 
 export async function runTask(task: ChecklistTask, content: string, session: string): Promise<void> {
@@ -197,7 +190,7 @@ export async function runTask(task: ChecklistTask, content: string, session: str
     try {
       const result = await runAttached(server, task.slug, session, model, agent, prompt, taskConfig)
       sessionId = result.session
-      text = result.output
+      if (result.skipped) return
     } catch (error) {
       exitCode = 1
       text = error instanceof Error ? error.message : String(error)
@@ -236,7 +229,14 @@ export async function runTask(task: ChecklistTask, content: string, session: str
 
   const status = exitCode === 0 ? "success" : "failed"
   const lastCompleted = status === "success" ? new Date().toISOString() : undefined
-  updateTask(projectRoot, task.slug, { pid: workerPid, session: sessionId, status, exit_code: exitCode, last_completed: lastCompleted, output: text.slice(0, 2000) })
+  updateTask(projectRoot, task.slug, {
+    ...(server ? {} : { pid: workerPid }),
+    session: sessionId,
+    status,
+    exit_code: exitCode,
+    last_completed: lastCompleted,
+    output: text.slice(0, 2000),
+  })
   log(`task=${task.slug} status=${status} exit_code=${exitCode} session=${sessionId || "none"}`)
   process.exitCode = exitCode
 }
