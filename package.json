@@ -1,6 +1,8 @@
 {
   "private": true,
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "type": "module",
   "scripts": {
     "build": "bun run --filter '*' build",
@@ -11,7 +13,7 @@
     "clean": "bun run scripts/clean.ts",
     "dev": "bun run build && bun run scripts/dev-plugin.ts",
     "fresh": "bun run clean && bun run dev",
-    "release": "bun publish --cwd=packages/tasksmd && bun publish --cwd=packages/opencode-tasksmd"
+    "release": "bun run --parallel --no-exit-on-error --filter '*' release"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.1"

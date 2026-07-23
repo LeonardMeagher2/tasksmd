@@ -31,6 +31,9 @@ bun run version
 bun run release
 ```
 
+`bun run release` attempts every package and reports failures after all publish
+commands have run. Additional arguments are passed to each `bun publish` call.
+
 ## Package Docs
 
 - `packages/tasksmd/README.md`
