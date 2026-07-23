@@ -1,5 +1,12 @@
 # @leonardmeagher2/opencode-tasksmd
 
+## 0.5.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @leonardmeagher2/tasksmd@0.4.0
+
 ## 0.5.0
 
 ### Minor Changes
