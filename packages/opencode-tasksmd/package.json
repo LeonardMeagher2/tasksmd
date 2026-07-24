@@ -18,6 +18,7 @@
     "build": "bun run build.ts",
     "pack": "bun pm pack --dry-run",
     "prepublishOnly": "bun run build",
+    "debug": "bun run src/debug-cli.ts",
     "test": "bun test",
     "release": "bun publish --tolerate-republish"
   },
