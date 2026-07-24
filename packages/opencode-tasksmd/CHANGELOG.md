@@ -1,5 +1,11 @@
 # @leonardmeagher2/opencode-tasksmd
 
+## 0.6.1
+
+### Patch Changes
+
+- Improve task worker session reuse and recovery, add the `task_info` tool, rename task runner tools to `task_done` and `task_blocked`, and clarify task prompts and worker diagnostics.
+
 ## 0.6.0
 
 ### Minor Changes
