@@ -1,5 +1,11 @@
 # @leonardmeagher2/opencode-tasksmd
 
+## 0.6.0
+
+### Minor Changes
+
+- Improve task worker sessions and prompts. Reuse task sessions across recurring and manually reset runs, recover when a stored session is unavailable, and add clearer task status instructions with the `task_done`, `task_blocked`, and `task_info` tools. Add worker diagnostics for task schedulers and session state.
+
 ## 0.5.1
 
 ### Patch Changes
