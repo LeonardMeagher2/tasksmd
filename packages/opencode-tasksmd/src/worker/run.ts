@@ -10,15 +10,45 @@ import { readState, updateTask } from "../state"
 import { loadTaskConfig, log, projectRoot, tasksFile } from "./common"
 import { findOpencode, findServer, type ServerConnection } from "./server"
 
-function taskPrompt(task: ChecklistTask, isRetry: boolean): string {
-  return `# Task
+export type PromptKind = "fresh" | "resume" | "recurring"
+
+export function taskPrompt(task: ChecklistTask, kind: PromptKind): string {
+  if (kind === "resume") {
+    return `Task current status: ${task.state}.
+Continue the task.
+Call task_info to see the task.
+When done, call task_done.
+If stuck, call task_blocked and say why.`
+  }
+
+  const intro = kind === "recurring" ? "This task runs on a schedule. You did it before. Do it again now:" : "Do this task:"
+
+  return `${intro}
+
+Task current status: ${task.state}.
 
 ${task.raw}
 
-# Rules
-${isRetry ? "- In progress already — check what is done, then finish it.\n" : ""}- Read any linked file in full.
-- Verify your work before finishing.
-- Call tasks_done when complete, or tasks_blocked with the reason you are stuck.`
+Steps:
+1. Read the task. Read every file it links to.
+2. Do the work.
+3. Check the work.
+4. Call task_done.
+
+If you cannot do the task, call task_blocked and say why.
+To see the task again, call task_info.`
+}
+
+/**
+ * How to prompt this run.
+ * - resume: the task is still active — an earlier run was interrupted.
+ * - recurring: the task ran before in this session (schedule or manual reset).
+ * - fresh: first run.
+ */
+export function promptKind(task: ChecklistTask, session: string, recurring = false): PromptKind {
+  if (!recurring && task.state === "active") return "resume"
+  if (recurring || session) return "recurring"
+  return "fresh"
 }
 
 type PermissionRule = Record<string, string>
@@ -30,8 +60,9 @@ function ruleKey(rule: PermissionRule): string {
 export function sessionPermissionRules(taskConfig: Record<string, unknown>): PermissionRule[] {
   return [
     ...permissionRules(taskPermissions(taskConfig)),
-    { permission: "tasks_done", pattern: "*", action: "allow" },
-    { permission: "tasks_blocked", pattern: "*", action: "allow" },
+    { permission: "task_done", pattern: "*", action: "allow" },
+    { permission: "task_blocked", pattern: "*", action: "allow" },
+    { permission: "task_info", pattern: "*", action: "allow" },
     { permission: "tasks_debug", pattern: "*", action: "deny" },
   ]
 }
@@ -127,10 +158,74 @@ async function runAttached(
   return { session: id, skipped: false }
 }
 
-export async function runTask(task: ChecklistTask, content: string, session: string): Promise<void> {
-  const isRetry = task.state === "active"
+/** First sessionID found in `opencode run --format json` output (one JSON event per line). */
+export function extractSessionId(text: string): string {
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith("{")) continue
+    try {
+      const found = findSessionId(JSON.parse(trimmed), 3)
+      if (found) return found
+    } catch {
+      // Not JSON — skip stderr noise and partial lines.
+    }
+  }
+  return ""
+}
 
-  // Recurring task: reset a completed task to pending and run it again.
+function findSessionId(value: unknown, depth: number): string {
+  if (depth < 0 || typeof value !== "object" || value === null) return ""
+  const record = value as Record<string, unknown>
+  if (typeof record.sessionID === "string") return record.sessionID
+  for (const child of Object.values(record)) {
+    const found = findSessionId(child, depth - 1)
+    if (found) return found
+  }
+  return ""
+}
+
+function runStandalone(
+  opencode: string,
+  args: string[],
+  prompt: string,
+  slug: string,
+  taskPermissionRules: Record<string, unknown>,
+): Promise<{ exitCode: number; text: string; pid: number }> {
+  return new Promise((resolve) => {
+    const output: Buffer[] = []
+    const child = spawn(opencode, args, {
+      cwd: projectRoot,
+      windowsHide: true,
+      env: {
+        ...process.env,
+        BUN_BE_BUN: undefined,
+        OPENCODE_TASKS_SLUG: slug,
+        ...(Object.keys(taskPermissionRules).length
+          ? { OPENCODE_PERMISSION: JSON.stringify(taskPermissionRules) }
+          : {}),
+      },
+      stdio: ["pipe", "pipe", "pipe"],
+    })
+    child.stdout.on("data", (data) => output.push(Buffer.from(data)))
+    child.stderr.on("data", (data) => output.push(Buffer.from(data)))
+    const pid = child.pid ?? process.pid
+    updateTask(projectRoot, slug, { pid, status: "running" })
+    child.stdin.write(prompt)
+    child.stdin.end()
+    child.on("error", (error) => {
+      output.push(Buffer.from(`failed to start opencode: ${error.message}`))
+      resolve({ exitCode: 1, text: Buffer.concat(output).toString("utf-8"), pid })
+    })
+    child.on("close", (code) =>
+      resolve({ exitCode: code ?? 1, text: Buffer.concat(output).toString("utf-8"), pid }),
+    )
+  })
+}
+
+export async function runTask(task: ChecklistTask, content: string, session: string, recurring = false): Promise<void> {
+  const kind = promptKind(task, session, recurring)
+
+  // Recurring task: reset a completed task to pending and run it again in the same session.
   if (task.state === "done") {
     const updated = replaceTask(content, task.slug, "pending")
     if (updated) {
@@ -138,12 +233,12 @@ export async function runTask(task: ChecklistTask, content: string, session: str
       const fresh = readFileSync(tasksFile, "utf-8")
       const parsed = parseChecklist(fresh)
       const found = parsed.roots.find((t) => t.slug === task.slug)
-      if (found) await runTask(found, fresh, "")
+      if (found) await runTask(found, fresh, session, true)
       return
     }
   }
 
-  if (!isRetry) {
+  if (kind !== "resume") {
     const updated = replaceTask(content, task.slug, "active")
     if (updated) writeFileSync(tasksFile, `${updated}\n`)
   }
@@ -160,7 +255,7 @@ export async function runTask(task: ChecklistTask, content: string, session: str
   const agent = typeof taskConfig.agent === "string" ? taskConfig.agent : ""
   const taskPermissionRules = taskPermissions(taskConfig)
 
-  const prompt = taskPrompt(task, isRetry)
+  const prompt = taskPrompt(task, kind)
 
   const server = await findServer()
   const opencode = findOpencode() || "opencode"
@@ -177,9 +272,8 @@ export async function runTask(task: ChecklistTask, content: string, session: str
     if (server.password) args.push("--password", server.password)
   }
   if (model) args.push("--model", model)
-  if (session) args.push("--session", session)
 
-  log(`task=${task.slug} retry=${isRetry} follow_up=${isRetry}`)
+  log(`task=${task.slug} kind=${kind} session=${session || "new"}`)
   log(`task=${task.slug} action=start binary=${opencode}`)
 
   let exitCode = 0
@@ -196,35 +290,24 @@ export async function runTask(task: ChecklistTask, content: string, session: str
       text = error instanceof Error ? error.message : String(error)
     }
   } else {
-    const output: Buffer[] = []
-    const child = spawn(opencode, args, {
-      cwd: projectRoot,
-      windowsHide: true,
-      env: {
-        ...process.env,
-        BUN_BE_BUN: undefined,
-        OPENCODE_TASKS_SLUG: task.slug,
-        ...(Object.keys(taskPermissionRules).length
-          ? { OPENCODE_PERMISSION: JSON.stringify(taskPermissionRules) }
-          : {}),
-      },
-      stdio: ["pipe", "pipe", "pipe"],
-    })
-    child.stdout.on("data", (data) => output.push(Buffer.from(data)))
-    child.stderr.on("data", (data) => output.push(Buffer.from(data)))
-    workerPid = child.pid ?? process.pid
-    updateTask(projectRoot, task.slug, { pid: child.pid ?? process.pid, status: "running" })
-    child.stdin.write(prompt)
-    child.stdin.end()
-    exitCode = await new Promise<number>((resolve) => {
-      child.on("error", (error) => {
-        output.push(Buffer.from(`failed to start opencode: ${error.message}`))
-        resolve(1)
-      })
-      child.on("close", (code) => resolve(code ?? 1))
-    })
-    text = Buffer.concat(output).toString("utf-8")
-    sessionId = text.match(/"sessionID":"([^"]+)"/)?.[1] || session
+    let result = await runStandalone(
+      opencode,
+      session ? [...args, "--session", session] : args,
+      prompt,
+      task.slug,
+      taskPermissionRules,
+    )
+    // The stored session may no longer exist. Try once more in a new session.
+    let fellBack = false
+    if (result.exitCode !== 0 && session) {
+      log(`task=${task.slug} action=retry reason=session-run-failed session=new`)
+      result = await runStandalone(opencode, args, taskPrompt(task, "fresh"), task.slug, taskPermissionRules)
+      fellBack = true
+    }
+    exitCode = result.exitCode
+    text = result.text
+    workerPid = result.pid
+    sessionId = extractSessionId(text) || (fellBack ? "" : session)
   }
 
   const status = exitCode === 0 ? "success" : "failed"
@@ -259,6 +342,6 @@ export async function runTaskBySlug(targetSlug: string): Promise<void> {
   }
 
   const state = readState(projectRoot)
-  const session = task.state === "active" ? state.tasks[targetSlug]?.session || "" : ""
+  const session = state.tasks[targetSlug]?.session || ""
   await runTask(task, content, session)
 }

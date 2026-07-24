@@ -49,7 +49,7 @@ Indented subtasks stay under their parent task.
 ```
 
 OpenCode marks work in progress. The task agent marks work done with
-`tasks_done` after checking the result, or blocked with `tasks_blocked`.
+`task_done` after checking the result, or blocked with `task_blocked`.
 
 ## Settings
 
