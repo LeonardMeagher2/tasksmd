@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { slugify, parseChecklist, replaceTask } from "./checklist"
+import { createChecklist, insertTask, parseChecklist, removeTask, replaceTask, slugify } from "./checklist"
 
 describe("slugify", () => {
   test("lowercases and replaces spaces", () => {
@@ -137,6 +137,44 @@ every: 5 minutes
     const content = "- [ ] Parent\n  - [ ] Child"
     const result = replaceTask(content, "child", "active")
     expect(result).toBe("- [ ] Parent\n  - [~] Child")
+  })
+})
+
+describe("board mutations", () => {
+  test("creates a board with frontmatter", () => {
+    const content = createChecklist({ every: "5 minutes", permission: { bash: "deny" } })
+    expect(content).toContain("every: 5 minutes")
+    expect(content).toContain("  bash: deny")
+    expect(parseChecklist(content).frontmatter).toEqual({
+      every: "5 minutes",
+      permission: { bash: "deny" },
+    })
+  })
+
+  test("adds a root task", () => {
+    const result = insertTask("---\n---\n\n", { text: "Add the health check", state: "active" })
+    expect(result).toContain("- [~] Add the health check")
+  })
+
+  test("adds a linked subtask after its parent's subtree", () => {
+    const content = "- [ ] Parent\n  - [ ] Existing child\n- [ ] Other"
+    const result = insertTask(content, { text: "New child", parent: "parent", link: "new.md" })
+    expect(result).toBe("- [ ] Parent\n  - [ ] Existing child\n  - [ ] [New child](new.md)\n- [ ] Other")
+  })
+
+  test("rejects duplicate and missing parent slugs", () => {
+    const content = "- [ ] Existing"
+    expect(insertTask(content, { text: "Existing" })).toBeUndefined()
+    expect(insertTask(content, { text: "Child", parent: "missing" })).toBeUndefined()
+  })
+
+  test("removes a task and its subtasks without removing the next root", () => {
+    const content = "- [ ] Parent\n  Details\n  - [ ] Child\n- [ ] Keep"
+    expect(removeTask(content, "parent")).toBe("- [ ] Keep")
+  })
+
+  test("returns undefined when removing a missing task", () => {
+    expect(removeTask("- [ ] Existing", "missing")).toBeUndefined()
   })
 })
 

@@ -1,5 +1,8 @@
 export {
   slugify,
+  createChecklist,
+  insertTask,
+  removeTask,
   parseChecklist,
   replaceTask,
 } from "./checklist"
@@ -7,11 +10,13 @@ export type {
   TaskState,
   ChecklistTask,
   Checklist,
+  TaskInput,
 } from "./checklist"
 
 export {
   frontmatter,
   mergeFrontmatter,
+  serializeFrontmatter,
 } from "./frontmatter"
 
 export {

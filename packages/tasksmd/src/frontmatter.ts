@@ -1,5 +1,5 @@
 import deepmerge from "deepmerge"
-import { parse as parseYaml } from "yaml"
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml"
 
 /**
  * Parse the YAML frontmatter block of a Markdown document.
@@ -21,4 +21,11 @@ export function frontmatter(content: string): Record<string, unknown> {
 /** Deep-merge two frontmatter records; values in `override` win. */
 export function mergeFrontmatter(base: Record<string, unknown>, override: Record<string, unknown>): Record<string, unknown> {
   return deepmerge(base, override)
+}
+
+/** Serialize a frontmatter mapping into a complete YAML frontmatter block. */
+export function serializeFrontmatter(values: Record<string, unknown> = {}): string {
+  if (Object.keys(values).length === 0) return "---\n---\n"
+  const yaml = stringifyYaml(values).trimEnd()
+  return `---\n${yaml}\n---\n`
 }
