@@ -19,8 +19,8 @@ function slugForSession(directory: string, sessionID: string): string | undefine
 
 export function createTaskTools(directory: string) {
   return {
-    tasks_done: tool({
-      description: "Mark the task you are currently working on as done. Call only after the work is complete and verified.",
+    task_done: tool({
+      description: "Mark your task as done on the board. Call this once, after the work is complete and you have verified the result.",
       args: {},
       async execute(_args, ctx) {
         const slug = slugForSession(directory, ctx.sessionID)
@@ -31,8 +31,8 @@ export function createTaskTools(directory: string) {
       },
     }),
 
-    tasks_blocked: tool({
-      description: "Mark the task you are currently working on as blocked when you cannot proceed. Explain the blocker in your reply.",
+    task_blocked: tool({
+      description: "Mark your task as blocked on the board when you cannot finish it. Give the reason so a person can unblock it.",
       args: {
         reason: tool.schema.string().optional().describe("Why the task is blocked"),
       },
@@ -45,6 +45,19 @@ export function createTaskTools(directory: string) {
         return args.reason
           ? `Task "${slug}" marked blocked: ${args.reason}`
           : `Task "${slug}" marked blocked.`
+      },
+    }),
+
+    task_info: tool({
+      description: "Show the full text of the task assigned to this session. Call this when you need to re-read what you were asked to do.",
+      args: {},
+      async execute(_args, ctx) {
+        const slug = slugForSession(directory, ctx.sessionID)
+        if (!slug) return "This session is not linked to a task."
+        const task = taskContext(directory, slug).current()
+        if (!task) return `Task "${slug}" was not found on the board.`
+        const info = `# Task: ${slug}\nTask current status: ${task.state}\n\n${task.raw}`
+        return task.link ? `${info}\n\nLinked file: ${task.link.path}` : info
       },
     }),
   }

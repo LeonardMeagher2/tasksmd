@@ -13,7 +13,8 @@
     "clean": "bun run scripts/clean.ts",
     "dev": "bun run build && bun run scripts/dev-plugin.ts",
     "fresh": "bun run clean && bun run dev",
-    "release": "bun run --parallel --no-exit-on-error --filter '*' release"
+    "release": "bun run --parallel --no-exit-on-error --filter '*' release",
+    "debug": "bun run --filter '*' debug -- $PWD"
   },
   "devDependencies": {
     "@changesets/cli": "^2.31.1"

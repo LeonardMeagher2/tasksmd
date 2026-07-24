@@ -31,8 +31,8 @@ async function main(): Promise<void> {
     return
   }
 
-  // Resume the same session for an interrupted task, like runTaskBySlug does.
-  const session = selected.state === "active" ? readState(projectRoot).tasks[selected.slug]?.session || "" : ""
+  // Reuse the same session whenever this task has one.
+  const session = readState(projectRoot).tasks[selected.slug]?.session || ""
   await runTask(selected, content, session)
 
   // A linked task file may declare its own recurring schedule — install it once.
