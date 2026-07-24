@@ -36,3 +36,19 @@ if (!worker.success) {
   for (const log of worker.logs) console.error(log)
   process.exit(1)
 }
+
+// The debug CLI script is a standalone diagnostic tool. Like the worker it
+// runs outside of OpenCode's plugin context so it must be self-contained.
+const debugCli = await Bun.build({
+  entrypoints: ["src/debug-cli.ts"],
+  outdir: "dist",
+  target: "node",
+  compile: false,
+  naming: "debug-cli.mjs",
+  format: "esm",
+  minify: true,
+})
+if (!debugCli.success) {
+  for (const log of debugCli.logs) console.error(log)
+  process.exit(1)
+}

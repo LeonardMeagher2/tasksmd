@@ -4,8 +4,9 @@ export function createConfigHook() {
       config.tools ??= {}
       // Only worker-launched sessions should see task status tools.
       const enabled = Boolean(process.env.OPENCODE_TASKS_SLUG)
-      config.tools["tasks_done"] = enabled
-      config.tools["tasks_blocked"] = enabled
+      config.tools["task_done"] = enabled
+      config.tools["task_blocked"] = enabled
+      config.tools["task_info"] = enabled
     },
   }
 }

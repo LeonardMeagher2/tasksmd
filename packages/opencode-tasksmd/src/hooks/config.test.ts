@@ -11,12 +11,12 @@ describe("createConfigHook", () => {
 
       const noWorkerConfig: Record<string, unknown> = {}
       hook.config(noWorkerConfig)
-      expect(noWorkerConfig).toEqual({ tools: { tasks_done: false, tasks_blocked: false } })
+      expect(noWorkerConfig).toEqual({ tools: { task_done: false, task_blocked: false, task_info: false } })
 
       process.env.OPENCODE_TASKS_SLUG = "example-task"
       const workerConfig: Record<string, unknown> = {}
       hook.config(workerConfig)
-      expect(workerConfig).toEqual({ tools: { tasks_done: true, tasks_blocked: true } })
+      expect(workerConfig).toEqual({ tools: { task_done: true, task_blocked: true, task_info: true } })
     } finally {
       if (previous === undefined) {
         delete process.env.OPENCODE_TASKS_SLUG
