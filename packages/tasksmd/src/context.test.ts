@@ -126,4 +126,29 @@ describe("openBoard", () => {
     expect(board.tasks()).toEqual([])
     expect(board.config()).toEqual({})
   })
+
+  test("creates a missing board without overwriting an existing one", () => {
+    const board = openBoard(path.join(dir, "NEW-TASKS.md"))
+    expect(board.create({ frontmatter: { project: "site" } })).toBe(true)
+    expect(board.exists()).toBe(true)
+    expect(board.config()).toEqual({ project: "site" })
+    expect(board.create()).toBe(false)
+  })
+
+  test("adds and removes tasks", () => {
+    const board = openBoard(dir)
+    const added = board.addTask({ text: "New task", parent: "first-task" })
+    expect(added?.slug).toBe("new-task")
+    expect(board.task("new-task").state()).toBe("pending")
+    expect(board.removeTask("new-task")).toBe(true)
+    expect(board.task("new-task").current()).toBeUndefined()
+  })
+
+  test("does not remove linked files with the board task", () => {
+    writeFileSync(path.join(dir, "linked.md"), "Task details", "utf-8")
+    const board = openBoard(dir)
+    board.addTask({ text: "Linked task", link: "linked.md" })
+    expect(board.removeTask("linked-task")).toBe(true)
+    expect(readFileSync(path.join(dir, "linked.md"), "utf-8")).toBe("Task details")
+  })
 })

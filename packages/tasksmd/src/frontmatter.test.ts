@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { frontmatter, mergeFrontmatter } from "./frontmatter"
+import { frontmatter, mergeFrontmatter, serializeFrontmatter } from "./frontmatter"
 
 describe("frontmatter", () => {
   test("parses simple frontmatter", () => {
@@ -150,5 +150,12 @@ describe("mergeFrontmatter", () => {
       { permission: { bash: "deny" } },
       { permission: { read: "allow" } },
     )).toEqual({ permission: { bash: "deny", read: "allow" } })
+  })
+})
+
+describe("serializeFrontmatter", () => {
+  test("round-trips nested values", () => {
+    const content = serializeFrontmatter({ every: "5 minutes", permission: { bash: "deny" } })
+    expect(frontmatter(content)).toEqual({ every: "5 minutes", permission: { bash: "deny" } })
   })
 })
