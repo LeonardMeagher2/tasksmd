@@ -1,5 +1,11 @@
 # @leonardmeagher2/opencode-tasksmd
 
+## 0.6.2
+
+### Patch Changes
+
+- Stop task agents from being able to call tasks_stop and tasks_start
+
 ## 0.6.1
 
 ### Patch Changes

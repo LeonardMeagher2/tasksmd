@@ -86,6 +86,8 @@ describe("sessionPermissionRules", () => {
       { permission: "task_blocked", pattern: "*", action: "allow" },
       { permission: "task_info", pattern: "*", action: "allow" },
       { permission: "tasks_debug", pattern: "*", action: "deny" },
+      { permission: "tasks_start", pattern: "*", action: "deny" },
+      { permission: "tasks_stop", pattern: "*", action: "deny" },
     ])
   })
 })

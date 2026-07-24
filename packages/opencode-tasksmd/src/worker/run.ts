@@ -16,9 +16,9 @@ export function taskPrompt(task: ChecklistTask, kind: PromptKind): string {
   if (kind === "resume") {
     return `Task current status: ${task.state}.
 Continue the task.
-Call task_info to see the task.
-When done, call task_done.
-If stuck, call task_blocked and say why.`
+Use the task_info tool to see the task.
+When done, use the task_done tool.
+If stuck, use the task_blocked tool and say why.`
   }
 
   const intro = kind === "recurring" ? "This task runs on a schedule. You did it before. Do it again now:" : "Do this task:"
@@ -33,10 +33,10 @@ Steps:
 1. Read the task. Read every file it links to.
 2. Do the work.
 3. Check the work.
-4. Call task_done.
+4. Use the task_done tool.
 
-If you cannot do the task, call task_blocked and say why.
-To see the task again, call task_info.`
+If you cannot do the task, use the task_blocked tool and say why.
+To see the task again, use the task_info tool.`
 }
 
 /**
@@ -64,6 +64,8 @@ export function sessionPermissionRules(taskConfig: Record<string, unknown>): Per
     { permission: "task_blocked", pattern: "*", action: "allow" },
     { permission: "task_info", pattern: "*", action: "allow" },
     { permission: "tasks_debug", pattern: "*", action: "deny" },
+    { permission: "tasks_start", pattern: "*", action: "deny" },
+    { permission: "tasks_stop", pattern: "*", action: "deny" },
   ]
 }
 
