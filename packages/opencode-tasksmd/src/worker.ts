@@ -4,6 +4,7 @@ import path from "node:path"
 import { frontmatter, parseChecklist } from "@leonardmeagher2/tasksmd"
 import { parseEvery } from "./config"
 import { readState, stateDir, writeState } from "./state"
+import { latestSessionForTask } from "./task-session"
 import { installTaskWorker } from "./tasks-scheduler"
 import { log, projectRoot, tasksFile } from "./worker/common"
 import { findServer } from "./worker/server"
@@ -32,7 +33,7 @@ async function main(): Promise<void> {
   }
 
   // Reuse the same session whenever this task has one.
-  const session = readState(projectRoot).tasks[selected.slug]?.session || ""
+  const session = latestSessionForTask(projectRoot, selected.slug)
   await runTask(selected, content, session)
 
   // A linked task file may declare its own recurring schedule — install it once.

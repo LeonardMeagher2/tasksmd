@@ -6,7 +6,8 @@ import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
 import { parseChecklist, replaceTask } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
 import { modelValue, permissionRules, taskPermissions, withDefaultTaskDeny } from "../config"
-import { readState, updateTask } from "../state"
+import { addTaskSession, readState, updateTask } from "../state"
+import { latestSessionForTask } from "../task-session"
 import { loadTaskConfig } from "../task-config"
 import { log, projectRoot, tasksFile } from "./common"
 import { findOpencode, findServer, type ServerConnection } from "./server"
@@ -122,6 +123,10 @@ export async function prepareAttachedSession(
   return id
 }
 
+function lastSession(sessions: string[]): string {
+  return sessions[sessions.length - 1] ?? ""
+}
+
 export function sessionIsBusy(status: { type?: string } | undefined): boolean {
   return Boolean(status && status.type !== "idle")
 }
@@ -154,7 +159,8 @@ async function runAttached(
   }
 
   // Record the session before prompting so its task tools can resolve the task.
-  updateTask(projectRoot, slug, { pid: undefined, session: id, status: "running" })
+  addTaskSession(projectRoot, slug, id)
+  updateTask(projectRoot, slug, { pid: undefined, status: "running" })
 
   // The server continues the turn after promptAsync returns.
   const sent = await client.session.promptAsync({
@@ -274,6 +280,9 @@ export async function runTask(task: ChecklistTask, content: string, session: str
 
   const prompt = taskPrompt(task, kind, linkedContext)
 
+  const knownSessions = readState(projectRoot).tasks[task.slug]?.sessions ?? []
+  const preferredSession = session || lastSession(knownSessions)
+
   const server = await findServer()
   const opencode = findOpencode() || "opencode"
   const args = [
@@ -291,16 +300,16 @@ export async function runTask(task: ChecklistTask, content: string, session: str
   if (model) args.push("--model", model)
   if (autoApprove) args.push("--auto")
 
-  log(`task=${task.slug} kind=${kind} session=${session || "new"}`)
+  log(`task=${task.slug} kind=${kind} session=${preferredSession || "new"}`)
   log(`task=${task.slug} action=start binary=${opencode}`)
 
   let exitCode = 0
-  let sessionId = session
+  let sessionId = preferredSession
   let text = ""
   let workerPid = process.pid
   if (server) {
     try {
-      const result = await runAttached(server, task.slug, session, model, agent, prompt, taskConfig)
+      const result = await runAttached(server, task.slug, preferredSession, model, agent, prompt, taskConfig)
       sessionId = result.session
       if (result.skipped) return
     } catch (error) {
@@ -310,14 +319,14 @@ export async function runTask(task: ChecklistTask, content: string, session: str
   } else {
     let result = await runStandalone(
       opencode,
-      session ? [...args, "--session", session] : args,
+      preferredSession ? [...args, "--session", preferredSession] : args,
       prompt,
       task.slug,
       taskPermissionRules,
     )
     // The stored session may no longer exist. Try once more in a new session.
     let fellBack = false
-    if (result.exitCode !== 0 && session) {
+    if (result.exitCode !== 0 && preferredSession) {
       log(`task=${task.slug} action=retry reason=session-run-failed session=new`)
       result = await runStandalone(opencode, args, taskPrompt(task, "fresh"), task.slug, taskPermissionRules)
       fellBack = true
@@ -325,14 +334,14 @@ export async function runTask(task: ChecklistTask, content: string, session: str
     exitCode = result.exitCode
     text = result.text
     workerPid = result.pid
-    sessionId = extractSessionId(text) || (fellBack ? "" : session)
+    sessionId = extractSessionId(text) || (fellBack ? "" : preferredSession)
   }
 
   const status = exitCode === 0 ? "success" : "failed"
   const lastCompleted = status === "success" ? new Date().toISOString() : undefined
+  if (sessionId) addTaskSession(projectRoot, task.slug, sessionId)
   updateTask(projectRoot, task.slug, {
     ...(server ? {} : { pid: workerPid }),
-    session: sessionId,
     status,
     exit_code: exitCode,
     last_completed: lastCompleted,
@@ -359,7 +368,6 @@ export async function runTaskBySlug(targetSlug: string): Promise<void> {
     return
   }
 
-  const state = readState(projectRoot)
-  const session = state.tasks[targetSlug]?.session || ""
+  const session = latestSessionForTask(projectRoot, targetSlug)
   await runTask(task, content, session)
 }

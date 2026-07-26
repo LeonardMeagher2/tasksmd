@@ -5,7 +5,7 @@ import path from "node:path"
 
 export type TaskRunState = {
   status?: string
-  session?: string
+  sessions: string[]
   pid?: number
   exit_code?: number
   output?: string
@@ -46,9 +46,25 @@ export function readState(directory: string): ProjectState {
   const file = stateFile(directory)
   try {
     const data = JSON.parse(readFileSync(file, "utf-8"))
+    const tasks = Object.fromEntries(
+      Object.entries(data.tasks ?? {}).map(([slug, run]) => {
+        const record = (run && typeof run === "object") ? (run as Record<string, unknown>) : {}
+        const sessions = Array.isArray(record.sessions)
+          ? record.sessions.filter((session): session is string => typeof session === "string")
+          : []
+        return [slug, {
+          sessions,
+          status: typeof record.status === "string" ? record.status : undefined,
+          pid: typeof record.pid === "number" ? record.pid : undefined,
+          exit_code: typeof record.exit_code === "number" ? record.exit_code : undefined,
+          output: typeof record.output === "string" ? record.output : undefined,
+          last_completed: typeof record.last_completed === "string" ? record.last_completed : undefined,
+        }] satisfies [string, TaskRunState]
+      }),
+    )
     return {
       schedulers: data.schedulers ?? {},
-      tasks: data.tasks ?? {},
+      tasks,
       server_url: data.server_url,
       server_password: data.server_password,
     }
@@ -67,8 +83,18 @@ export function writeState(directory: string, state: ProjectState): void {
   renameSync(tmp, file)
 }
 
-export function updateTask(directory: string, slug: string, update: TaskRunState): void {
+export function updateTask(directory: string, slug: string, update: Partial<TaskRunState>): void {
   const state = readState(directory)
-  state.tasks[slug] = { ...state.tasks[slug], ...update }
+  const existing = state.tasks[slug] ?? { sessions: [] }
+  state.tasks[slug] = { ...existing, ...update, sessions: update.sessions ?? existing.sessions }
+  writeState(directory, state)
+}
+
+export function addTaskSession(directory: string, slug: string, sessionID: string): void {
+  if (!sessionID) return
+  const state = readState(directory)
+  const existing = state.tasks[slug] ?? { sessions: [] }
+  const filtered = existing.sessions.filter((current) => current !== sessionID)
+  state.tasks[slug] = { ...existing, sessions: [...filtered, sessionID] }
   writeState(directory, state)
 }

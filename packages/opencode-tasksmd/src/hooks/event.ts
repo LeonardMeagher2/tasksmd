@@ -50,7 +50,7 @@ async function toastFinishedSession(client: PluginClient, directory: string, ses
   await new Promise((resolve) => setTimeout(resolve, 2000))
   const state = readState(directory)
   for (const [slug, run] of Object.entries(state.tasks)) {
-    if (run.session !== sessionID || !run.status || run.status === "running") continue
+    if (!run.sessions.includes(sessionID) || !run.status || run.status === "running") continue
     const key = `${slug}:${run.last_completed ?? ""}:${run.status}`
     if (toastedRuns.has(key)) return
     if (toastedRuns.size > 500) toastedRuns.clear()

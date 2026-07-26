@@ -1,21 +1,6 @@
 import { tool } from "@opencode-ai/plugin"
 import { taskContext } from "@leonardmeagher2/tasksmd"
-import { readState } from "../state"
-
-/**
- * Slug of the task a session belongs to. Standalone worker runs carry the
- * slug in the environment; attached runs are recorded in worker state before
- * the session starts.
- */
-function slugForSession(directory: string, sessionID: string): string | undefined {
-  const fromEnv = process.env.OPENCODE_TASKS_SLUG
-  if (fromEnv) return fromEnv
-  const state = readState(directory)
-  for (const [slug, run] of Object.entries(state.tasks)) {
-    if (run.session === sessionID) return slug
-  }
-  return undefined
-}
+import { slugForSession } from "../task-session"
 
 export function createTaskTools(directory: string) {
   return {
