@@ -319,7 +319,7 @@ async function runResolvedTask(
   if (task.state === "done") {
     const updated = replaceTask(content, task.slug, "pending")
     if (updated) {
-      writeFileSync(tasksFile, `${updated}\n`)
+      writeFileSync(tasksFile, updated)
       const fresh = readFileSync(tasksFile, "utf-8")
       const parsed = parseChecklist(fresh)
       const found = parsed.roots.find((t) => t.slug === task.slug)
@@ -330,13 +330,13 @@ async function runResolvedTask(
 
   if (kind !== "resume") {
     const updated = replaceTask(content, task.slug, "active")
-    if (updated) writeFileSync(tasksFile, `${updated}\n`)
+    if (updated) writeFileSync(tasksFile, updated)
   }
 
   if (task.link && !existsSync(path.join(projectRoot, task.link.path))) {
     const current = readFileSync(tasksFile, "utf-8")
     const marked = replaceTask(current, task.slug, "blocked")
-    if (marked) writeFileSync(tasksFile, `${marked}\n`)
+    if (marked) writeFileSync(tasksFile, marked)
     throw new Error(`Linked task file not found: ${task.link.path}`)
   }
 

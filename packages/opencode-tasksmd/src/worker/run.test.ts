@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
@@ -507,6 +507,21 @@ describe("runTaskBySlug", () => {
     const { client, prompts } = countingClient()
     await runTaskBySlug(dir, "hourly-review", client)
     expect(prompts()).toBe(1)
+  })
+
+  test("does not add trailing blank lines when a missing linked task is blocked", async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "tasksmd-run-"))
+    dirs.push(dir)
+    writeFileSync(path.join(dir, "TASKS.md"), "- [ ] [Missing link](checks/missing.md)\n")
+
+    const { client } = countingClient()
+    await expect(runTaskBySlug(dir, "missing-link", client)).rejects.toThrow(
+      "Linked task file not found: checks/missing.md",
+    )
+
+    const content = readFileSync(path.join(dir, "TASKS.md"), "utf-8")
+    expect(content).toBe("- [!] [Missing link](checks/missing.md)\n")
+    expect(content.endsWith("\n\n")).toBe(false)
   })
 })
 
