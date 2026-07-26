@@ -23,6 +23,7 @@ function tempProject(): string {
 
 const client: PluginClient = {
   tui: { showToast: async () => ({}) },
+  app: { agents: async () => ({ data: [] }) },
   session: {
     get: async () => ({}),
     create: async () => ({}),

@@ -2,7 +2,8 @@
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022"],
+    // ES2023 for Array findLast/findLastIndex, which Bun and Node 18+ provide.
+    "lib": ["ES2023"],
     "module": "Preserve",
     "moduleResolution": "bundler",
     "moduleDetection": "force",

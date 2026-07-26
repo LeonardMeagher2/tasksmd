@@ -70,6 +70,7 @@ describe("runtime scheduler controls", () => {
 
     registerTaskRuntimeClient(dir, {
       tui: { showToast: async () => ({}) },
+      app: { agents: async () => ({ data: [] }) },
       session: {
         get: async () => ({}),
         create: async () => ({ data: { id: "ses_1" } }),
@@ -98,6 +99,7 @@ describe("runtime scheduler controls", () => {
 
     registerTaskRuntimeClient(dir, {
       tui: { showToast: async () => ({}) },
+      app: { agents: async () => ({ data: [] }) },
       session: {
         get: async () => ({ error: true }),
         create: async () => ({ data: { id: "ses_1" } }),

@@ -82,18 +82,40 @@ agent.
 
 `max_active` limits how many tasks run at the same time.
 
-`auto_approve` auto-approves permission requests for the task's session, like
-`opencode run --auto`. Rules set to `deny` still block. Only the task's session
-is affected; your own sessions are untouched.
+`auto_approve` lets a task run without stopping to ask. It answers yes to every
+permission request the task would otherwise have to wait on, and leaves `deny`
+rules refusing. Only the task's session is affected; your own sessions are
+untouched.
+
+It works from the permissions already in effect for the agent — OpenCode's
+defaults, the agent's own rules, and your `opencode.json` — and re-applies them
+to the task's session with `ask` changed to `allow`. Anything you have denied
+stays denied. In practice this covers reaching outside the project directory,
+reading `.env` files, and anything your own config marks `ask`.
 
 `permission` controls what the task may do: `allow`, `ask`, or `deny`.
 Use it for all tool access, including patterns such as `bash: deny`.
 This plugin writes those rules onto the session before it starts prompting, so
-attached sessions use them too.
+only the task's session is affected here too.
 
-Sub-agent spawning (the `task` permission) defaults to `deny` for task sessions.
-Set `permission: { task: allow }` or a per-agent glob like
-`task: { explore: "allow" }` to opt in.
+A narrower rule always beats a broader one, whatever order they appear in, so
+`permission` still applies on top of `auto_approve`:
+
+```md
+---
+auto_approve: true
+permission:
+  bash:
+    "*": deny
+    "git *": allow
+---
+```
+
+That task runs unattended, but `bash` is refused except for `git` commands.
+
+Sub-agent spawning (the `task` permission) defaults to `deny` for task sessions
+and stays denied under `auto_approve`. Set `permission: { task: allow }` or a
+per-agent glob like `task: { explore: "allow" }` to opt in.
 
 ### Linked Task Files
 
