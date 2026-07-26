@@ -90,6 +90,10 @@ This plugin writes those rules onto the session before it starts prompting, so
 attached sessions use them too. The standalone CLI path also passes them
 through.
 
+Sub-agent spawning (the `task` permission) defaults to `deny` for task sessions.
+Set `permission: { task: allow }` or a per-agent glob like
+`task: { explore: "allow" }` to opt in.
+
 ### Linked Task Files
 
 Linked task files can override the model and agent, and can use stricter

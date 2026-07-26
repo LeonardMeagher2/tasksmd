@@ -79,9 +79,71 @@ describe("sessionIsBusy", () => {
 })
 
 describe("sessionPermissionRules", () => {
+  test("adds default task:deny when no task key is present", () => {
+    expect(sessionPermissionRules({})).toEqual([
+      { permission: "task", pattern: "*", action: "deny" },
+      { permission: "task_done", pattern: "*", action: "allow" },
+      { permission: "task_blocked", pattern: "*", action: "allow" },
+      { permission: "task_info", pattern: "*", action: "allow" },
+      { permission: "tasks_debug", pattern: "*", action: "deny" },
+      { permission: "tasks_start", pattern: "*", action: "deny" },
+      { permission: "tasks_stop", pattern: "*", action: "deny" },
+    ])
+  })
+
+  test("adds task:deny when *:allow is present but no explicit task", () => {
+    expect(sessionPermissionRules({ permission: { "*": "allow" } })).toEqual([
+      { permission: "*", pattern: "*", action: "allow" },
+      { permission: "task", pattern: "*", action: "deny" },
+      { permission: "task_done", pattern: "*", action: "allow" },
+      { permission: "task_blocked", pattern: "*", action: "allow" },
+      { permission: "task_info", pattern: "*", action: "allow" },
+      { permission: "tasks_debug", pattern: "*", action: "deny" },
+      { permission: "tasks_start", pattern: "*", action: "deny" },
+      { permission: "tasks_stop", pattern: "*", action: "deny" },
+    ])
+  })
+
   test("keeps task permissions while enabling only worker status tools", () => {
     expect(sessionPermissionRules({ permission: { "*": "deny" } })).toEqual([
       { permission: "*", pattern: "*", action: "deny" },
+      { permission: "task", pattern: "*", action: "deny" },
+      { permission: "task_done", pattern: "*", action: "allow" },
+      { permission: "task_blocked", pattern: "*", action: "allow" },
+      { permission: "task_info", pattern: "*", action: "allow" },
+      { permission: "tasks_debug", pattern: "*", action: "deny" },
+      { permission: "tasks_start", pattern: "*", action: "deny" },
+      { permission: "tasks_stop", pattern: "*", action: "deny" },
+    ])
+  })
+
+  test("uses explicit task:allow instead of default deny", () => {
+    expect(sessionPermissionRules({ permission: { task: "allow" } })).toEqual([
+      { permission: "task", pattern: "*", action: "allow" },
+      { permission: "task_done", pattern: "*", action: "allow" },
+      { permission: "task_blocked", pattern: "*", action: "allow" },
+      { permission: "task_info", pattern: "*", action: "allow" },
+      { permission: "tasks_debug", pattern: "*", action: "deny" },
+      { permission: "tasks_start", pattern: "*", action: "deny" },
+      { permission: "tasks_stop", pattern: "*", action: "deny" },
+    ])
+  })
+
+  test("uses explicit task:deny and does not add a second", () => {
+    expect(sessionPermissionRules({ permission: { task: "deny" } })).toEqual([
+      { permission: "task", pattern: "*", action: "deny" },
+      { permission: "task_done", pattern: "*", action: "allow" },
+      { permission: "task_blocked", pattern: "*", action: "allow" },
+      { permission: "task_info", pattern: "*", action: "allow" },
+      { permission: "tasks_debug", pattern: "*", action: "deny" },
+      { permission: "tasks_start", pattern: "*", action: "deny" },
+      { permission: "tasks_stop", pattern: "*", action: "deny" },
+    ])
+  })
+
+  test("preserves per-agent glob pattern for task", () => {
+    expect(sessionPermissionRules({ permission: { task: { explore: "allow" } } })).toEqual([
+      { permission: "task", pattern: "explore", action: "allow" },
       { permission: "task_done", pattern: "*", action: "allow" },
       { permission: "task_blocked", pattern: "*", action: "allow" },
       { permission: "task_info", pattern: "*", action: "allow" },

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { parseEvery, taskPermissions, permissionRules, modelValue } from "./config"
+import { parseEvery, taskPermissions, permissionRules, modelValue, withDefaultTaskDeny } from "./config"
 
 describe("parseEvery", () => {
   test("returns 0 for false", () => {
@@ -105,6 +105,32 @@ describe("permissionRules", () => {
       { permission: "bash", pattern: "*.exe", action: "deny" },
       { permission: "bash", pattern: "*", action: "allow" },
     ])
+  })
+})
+
+describe("withDefaultTaskDeny", () => {
+  test("adds task:deny when no task key is present", () => {
+    expect(withDefaultTaskDeny({})).toEqual({ task: "deny" })
+  })
+
+  test("adds task:deny when *:allow is present but no explicit task", () => {
+    expect(withDefaultTaskDeny({ "*": "allow" })).toEqual({ "*": "allow", task: "deny" })
+  })
+
+  test("adds task:deny when *:deny is present but no explicit task", () => {
+    expect(withDefaultTaskDeny({ "*": "deny" })).toEqual({ "*": "deny", task: "deny" })
+  })
+
+  test("preserves existing task:allow", () => {
+    expect(withDefaultTaskDeny({ task: "allow" })).toEqual({ task: "allow" })
+  })
+
+  test("preserves existing task object (per-agent glob)", () => {
+    expect(withDefaultTaskDeny({ task: { explore: "allow" } })).toEqual({ task: { explore: "allow" } })
+  })
+
+  test("preserves other permissions alongside added task:deny", () => {
+    expect(withDefaultTaskDeny({ bash: "allow", read: "deny" })).toEqual({ bash: "allow", read: "deny", task: "deny" })
   })
 })
 

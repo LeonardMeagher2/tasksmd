@@ -5,7 +5,7 @@ import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
 
 import { parseChecklist, replaceTask } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
-import { modelValue, permissionRules, taskPermissions } from "../config"
+import { modelValue, permissionRules, taskPermissions, withDefaultTaskDeny } from "../config"
 import { readState, updateTask } from "../state"
 import { loadTaskConfig } from "../task-config"
 import { log, projectRoot, tasksFile } from "./common"
@@ -60,7 +60,7 @@ function ruleKey(rule: PermissionRule): string {
 
 export function sessionPermissionRules(taskConfig: Record<string, unknown>): PermissionRule[] {
   return [
-    ...permissionRules(taskPermissions(taskConfig)) as PermissionRule[],
+    ...permissionRules(withDefaultTaskDeny(taskPermissions(taskConfig))) as PermissionRule[],
     { permission: "task_done", pattern: "*", action: "allow" },
     { permission: "task_blocked", pattern: "*", action: "allow" },
     { permission: "task_info", pattern: "*", action: "allow" },
@@ -253,7 +253,7 @@ export async function runTask(task: ChecklistTask, content: string, session: str
   const model = typeof taskConfig.model === "string" ? taskConfig.model : ""
   const agent = typeof taskConfig.agent === "string" ? taskConfig.agent : ""
   const autoApprove = Boolean(taskConfig.auto_approve)
-  const taskPermissionRules = taskPermissions(taskConfig)
+  const taskPermissionRules = withDefaultTaskDeny(taskPermissions(taskConfig))
 
   const prompt = taskPrompt(task, kind)
 

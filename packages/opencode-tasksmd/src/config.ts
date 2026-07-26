@@ -37,6 +37,11 @@ export function taskPermissions(data: Record<string, unknown>): PermissionConfig
   }))
 }
 
+/** Add `task: "deny"` when the frontmatter doesn't set an explicit `task` permission. */
+export function withDefaultTaskDeny(perms: PermissionConfig): PermissionConfig {
+  return "task" in perms ? perms : { ...perms, task: "deny" }
+}
+
 /** Convert permission config into an OpenCode permission ruleset. */
 export function permissionRules(permissions: PermissionConfig): Array<Record<string, string>> {
   return Object.entries(permissions).flatMap(([permission, value]) => {

@@ -1,5 +1,15 @@
 # @leonardmeagher2/opencode-tasksmd
 
+## 0.8.0
+
+### Minor Changes
+
+- Sub-agent spawning (`task` permission) now defaults to `deny` for task sessions
+  unless the task frontmatter explicitly sets a `task` permission rule.
+  Previously task agents could spawn sub-agents without restriction; now they must
+  opt in with `permission: { task: allow }` or a per-agent glob pattern like
+  `permission: { task: { explore: "allow" } }`.
+
 ## 0.7.1
 
 ### Patch Changes
