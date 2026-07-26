@@ -1,5 +1,19 @@
 # @leonardmeagher2/opencode-tasksmd
 
+## 0.8.2
+
+### Patch Changes
+
+- 3a29710: Include linked task file content in fresh worker prompts, with truncation at 6000 characters.
+
+  Fresh prompts now include a "Linked task context" section when a task links to a Markdown file.
+  Long linked content is truncated with a clear marker, while resume and recurring prompts stay unchanged.
+
+- 9a731b2: Track multiple session IDs per task instead of a single session.
+
+  This updates task session resolution so task tools and auto-approve checks can
+  resolve a task slug from any recorded session tied to that task.
+
 ## 0.8.1
 
 ### Patch Changes
