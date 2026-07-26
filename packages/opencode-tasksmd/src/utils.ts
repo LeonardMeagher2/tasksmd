@@ -10,6 +10,11 @@ const siblingWorker = ["worker.mjs", "worker.js", "worker.ts"]
   .find((candidate) => existsSync(candidate))
 export const bundledWorker = siblingWorker
 
+const siblingSkill = [
+  path.join(pluginDir, "..", "skills", "tasksmd-writing", "SKILL.md"),
+].find((candidate) => existsSync(candidate))
+export const bundledSkill = siblingSkill
+
 function which(name: string): string {
   try {
     const command = process.platform === "win32" ? "where.exe" : "sh"
@@ -80,6 +85,14 @@ export function installWorkerAsset(directory: string): void {
   for (const name of ["worker.mjs", "worker.js", "worker.ts"]) {
     if (name !== targetName) rmSync(path.join(directory, ".opencode", "tasks", name), { force: true })
   }
+}
+
+export function installBundledSkill(directory: string): void {
+  if (!bundledSkill) return
+  const target = path.join(directory, ".opencode", "skills", "tasksmd-writing", "SKILL.md")
+  if (existsSync(target)) return
+  mkdirSync(path.dirname(target), { recursive: true })
+  copyFileSync(bundledSkill, target)
 }
 
 export function hasTasksFile(directory: string): boolean {

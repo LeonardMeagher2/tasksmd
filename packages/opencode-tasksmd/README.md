@@ -104,6 +104,20 @@ permissions for that task.
 When OpenCode is already running, task sessions use it and appear with your
 other sessions. When it is closed, tasks still run on their own.
 
+## Bundled Skill
+
+This plugin ships a default skill at:
+
+- `.opencode/skills/tasksmd-writing/SKILL.md`
+
+On startup, the plugin installs that file if it is missing. It does not
+overwrite existing workspace edits.
+
+The skill focuses on tool-agnostic `TASKS.md` format and a safe start workflow
+for task sessions. For exact OpenCode config field shapes, use:
+
+- https://opencode.ai/config.json
+
 ## Controls
 
 Your agent can use `tasks_start` to sync schedulers and run pending work now.

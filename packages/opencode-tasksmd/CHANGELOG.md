@@ -1,5 +1,18 @@
 # @leonardmeagher2/opencode-tasksmd
 
+## 0.8.1
+
+### Patch Changes
+
+- Ship a bundled `tasksmd-writing` skill with the plugin and install it into
+  `.opencode/skills/tasksmd-writing/SKILL.md` when missing.
+
+  The installer preserves workspace customizations by not overwriting an existing
+  skill file.
+
+  Also include packaged skill assets in publish output and document the bundled
+  skill behavior in the README.
+
 ## 0.8.0
 
 ### Minor Changes

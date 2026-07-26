@@ -6,12 +6,13 @@ import { createPermissionHook } from "./hooks/permission"
 import { createDebugTool } from "./tools/debug"
 import { createTaskTools } from "./tools/task"
 import { createWorkerTools } from "./tools/worker"
-import { installWorkerAsset, hasTasksFile } from "./utils"
+import { installBundledSkill, installWorkerAsset, hasTasksFile } from "./utils"
 import { reconcileTaskSchedulers } from "./tasks-runtime"
 import { readState, writeState } from "./state"
 
 export const TasksPlugin: Plugin = async ({ directory, client, serverUrl }) => {
   installWorkerAsset(directory)
+  installBundledSkill(directory)
 
   // Remember where the host's server lives so scheduled workers can attach later.
   if (serverUrl) {

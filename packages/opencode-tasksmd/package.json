@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
   "name": "@leonardmeagher2/opencode-tasksmd",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "description": "Background task queue for OpenCode projects, powered by TASKS.md",
   "author": {
     "name": "Leonard Meagher",
@@ -11,6 +11,7 @@
   "main": "dist/index.js",
   "files": [
     "dist",
+    "skills",
     "README.md",
     "LICENSE"
   ],
