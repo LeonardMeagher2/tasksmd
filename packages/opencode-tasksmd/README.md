@@ -53,6 +53,21 @@ Indented subtasks stay under their parent task.
 OpenCode marks work in progress. The task agent marks work done with
 `task_done` after checking the result, or blocked with `task_blocked`.
 
+## Order of Work
+
+Each time it checks, OpenCode reads the board from top to bottom and takes the
+first task it can run right now:
+
+- a task with its own `every` runs when it is due again;
+- a task in progress is continued;
+- a waiting task starts.
+
+A task whose session is still working is passed over, not waited on, and the
+check moves down the board. Blocked tasks are left alone.
+
+Position decides order, so a recurring task at the top of the board runs before
+the work below it. Being due does not let it jump ahead of a task above it.
+
 ## Settings
 
 ### Board Defaults
@@ -71,16 +86,23 @@ permission:
 ---
 ```
 
-`every` sets a repeat schedule. On the board, it checks for new pending work at
-that interval. In a linked task file, it runs that task again on the interval.
-Use `false` or `0` to disable it. Examples: `5 minutes`, `1h`, `3600`, `false`.
+`every` sets a repeat schedule. On the board, it checks for work at that
+interval. In a linked task file, it runs that task again on the interval, timed
+from the last run, so a restart does not lose the schedule and a missed interval
+is picked up on the next check rather than skipped. Use `false` or `0` to
+disable it. Examples: `5 minutes`, `1h`, `3600`, `false`.
 
 `model` sets the default model.
 
 `agent` sets which OpenCode agent runs tasks. By default, tasks use your main
 agent.
 
-`max_active` limits how many tasks run at the same time.
+`max_active` limits how many task sessions work at once, recurring tasks
+included. While every slot is taken, nothing new starts. Use `false` or `0` to
+work without a limit.
+
+A task left marked `[~]` whose session has gone idle does not hold a slot — the
+marker says a task was started, not that anything is happening.
 
 `auto_approve` lets a task run without stopping to ask. It answers yes to every
 permission request the task would otherwise have to wait on, and leaves `deny`

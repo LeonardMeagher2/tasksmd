@@ -1,7 +1,6 @@
-import { existsSync, mkdirSync, readFileSync } from "node:fs"
+import { existsSync, readFileSync } from "node:fs"
 
 import { parseChecklist } from "@leonardmeagher2/tasksmd"
-import { stateDir } from "./state"
 import { latestSessionForTask } from "./task-session"
 import type { PluginClient } from "./types"
 import { log, resolveProjectRoot, tasksFilePath } from "./worker/common"
@@ -12,7 +11,6 @@ export async function runWorker(directory: string, client: PluginClient, taskSlu
   const projectRoot = resolveProjectRoot(directory)
   const tasksFile = tasksFilePath(projectRoot)
   if (!existsSync(tasksFile)) return
-  mkdirSync(stateDir(projectRoot), { recursive: true })
 
   if (taskSlug) {
     await runTaskBySlug(projectRoot, taskSlug, client)

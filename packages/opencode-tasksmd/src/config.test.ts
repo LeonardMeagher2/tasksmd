@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { parseEvery, taskPermissions, permissionRules, modelValue, withDefaultTaskDeny } from "./config"
+import { parseEvery, parseMaxActive, taskPermissions, permissionRules, modelValue, withDefaultTaskDeny } from "./config"
 
 describe("parseEvery", () => {
   test("returns 0 for false", () => {
@@ -68,6 +68,30 @@ describe("parseEvery", () => {
 
   test("float string is rounded", () => {
     expect(parseEvery("90.5")).toBe(91)
+  })
+})
+
+describe("parseMaxActive", () => {
+  test("keeps a whole number above zero", () => {
+    expect(parseMaxActive(3)).toBe(3)
+    expect(parseMaxActive("2")).toBe(2)
+  })
+
+  test("false and zero remove the limit", () => {
+    expect(parseMaxActive(false)).toBe(Number.POSITIVE_INFINITY)
+    expect(parseMaxActive(0)).toBe(Number.POSITIVE_INFINITY)
+    expect(parseMaxActive("0")).toBe(Number.POSITIVE_INFINITY)
+  })
+
+  test("falls back rather than lifting the cap", () => {
+    expect(parseMaxActive("plenty")).toBe(1)
+    expect(parseMaxActive(undefined)).toBe(1)
+    expect(parseMaxActive(null)).toBe(1)
+    expect(parseMaxActive(-2)).toBe(1)
+  })
+
+  test("truncates a fraction to whole sessions", () => {
+    expect(parseMaxActive(2.7)).toBe(2)
   })
 })
 

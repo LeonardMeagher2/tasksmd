@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { parseChecklist } from "@leonardmeagher2/tasksmd"
-import { parseEvery } from "./config"
-import { boardSchedules } from "./schedule"
+import { parseEvery, parseMaxActive } from "./config"
+import { boardSchedules, scheduleDetail } from "./schedule"
 import { logFile, readState } from "./state"
 
 const directory = resolveDir()
@@ -18,7 +18,8 @@ const content = readFileSync(boardPath, "utf-8")
 const parsed = parseChecklist(content)
 const every = parseEvery(parsed.frontmatter.every, 0)
 lines.push(`board: ${boardPath}`)
-lines.push(`  every: ${every > 0 ? `${every}s` : "disabled"}  max_active: ${parsed.frontmatter.max_active ?? 1}`)
+const limit = parseMaxActive(parsed.frontmatter.max_active)
+lines.push(`  every: ${every > 0 ? `${every}s` : "disabled"}  max_active: ${Number.isFinite(limit) ? limit : "unlimited"}`)
 const counts: Record<string, number> = {}
 for (const t of parsed.roots) counts[t.state] = (counts[t.state] ?? 0) + 1
 lines.push(`  roots: ${parsed.roots.length} (${Object.entries(counts).map(([k, v]) => `${k}:${v}`).join(", ")})`)
@@ -29,11 +30,13 @@ const state = readState(directory)
 const configured = boardSchedules(directory, parsed)
 lines.push(`state: ${Object.keys(configured).length} configured scheduler(s), ${Object.keys(state.tasks).length} task record(s)`)
 for (const [slug, interval] of Object.entries(configured)) {
-  lines.push(`  scheduler ${slug || "(board)"}: every ${interval}s`)
+  lines.push(`  scheduler ${slug || "(board)"}: every ${interval}s${scheduleDetail(state, slug, interval)}`)
 }
 
+// The board only: what the worker picks also depends on session status,
+// schedules and `max_active`, none of which this line accounts for.
 const next = parsed.roots.find((t) => t.state === "pending")
-lines.push(`next pending: ${next ? next.slug : "none"}`)
+lines.push(`first pending on the board: ${next ? next.slug : "none"}`)
 
 const log = logFile(directory)
 if (existsSync(log)) {

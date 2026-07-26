@@ -3,6 +3,7 @@ import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
 
+import { logFile, stateFile } from "./state"
 import {
   configuredSchedulers,
   registerTaskRuntimeClient,
@@ -20,6 +21,8 @@ afterEach(() => {
   while (projectDirs.length) {
     const dir = projectDirs.pop()!
     stopTaskSchedulers(dir)
+    rmSync(stateFile(dir), { force: true })
+    rmSync(logFile(dir), { force: true })
     rmSync(dir, { recursive: true, force: true })
   }
 })

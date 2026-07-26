@@ -4,6 +4,7 @@ import path from "node:path"
 import { parseChecklist, replaceTask } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
 import { modelValue, permissionRules, taskPermissions, withDefaultTaskDeny } from "../config"
+import { scheduleDue, taskSchedules } from "../schedule"
 import { addTaskSession, readState, updateTask } from "../state"
 import { latestSessionForTask } from "../task-session"
 import { loadTaskConfig } from "../task-config"
@@ -367,10 +368,14 @@ async function runResolvedTask(
   }
 
   const status = exitCode === 0 ? "success" : "failed"
-  const lastCompleted = status === "success" ? new Date().toISOString() : undefined
+  const now = new Date().toISOString()
+  const lastCompleted = status === "success" ? now : undefined
   if (sessionId) addTaskSession(projectRoot, task.slug, sessionId)
+  // `last_run` records the dispatch, failures included, so a recurring task
+  // that keeps failing waits out its interval instead of retrying every tick.
   updateTask(projectRoot, task.slug, {
     exit_code: exitCode,
+    last_run: now,
     last_completed: lastCompleted,
     output: text.slice(0, OUTPUT_LIMIT),
   })
@@ -394,6 +399,17 @@ export async function runTaskBySlug(directory: string, targetSlug: string, clien
   if (task.state === "blocked") {
     log(projectRoot, `task=${targetSlug} action=skip reason=blocked`)
     return
+  }
+
+  // A timer only wakes the task up; state decides whether it is really due, so
+  // a run triggered from elsewhere in the meantime is not repeated here.
+  const interval = taskSchedules(projectRoot, parsed)[targetSlug]
+  if (interval) {
+    const lastRun = readState(projectRoot).tasks[targetSlug]?.last_run
+    if (!scheduleDue(lastRun, interval)) {
+      log(projectRoot, `task=${targetSlug} action=skip reason=not-due last_run=${lastRun}`)
+      return
+    }
   }
 
   const session = latestSessionForTask(projectRoot, targetSlug)

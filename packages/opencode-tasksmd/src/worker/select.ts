@@ -1,14 +1,37 @@
 import type { Checklist, ChecklistTask } from "@leonardmeagher2/tasksmd"
-import { scheduledTaskSlugs } from "../schedule"
-import { latestSessionForTask } from "../task-session"
+import { parseMaxActive } from "../config"
+import { scheduleDue, taskSchedules } from "../schedule"
+import { readState } from "../state"
 import type { PluginClient, SessionStatus } from "../types"
 import { resolveProjectRoot } from "./common"
 import { sessionIsBusy, sessionStatuses } from "./run"
 
 /**
- * Pick the next root task to run. Active tasks are resumed unless their
- * current session is observably busy in the runtime. Tasks that carry their own
- * schedule are left to their timer.
+ * How long a task holds its slot after being dispatched. The runtime does not
+ * report a session as busy the instant it is prompted, and without this a tick
+ * landing in that gap would start a second task over the limit.
+ */
+export const DISPATCH_GRACE_MS = 10_000
+
+/**
+ * Pick the next root task to run, walking the board from top to bottom and
+ * taking the first one that can run right now. A task whose session is still
+ * working is passed over, never waited on.
+ *
+ * Eligibility, in board order:
+ * - a task with its own `every` runs when it is due again, whatever its state;
+ * - an active task is resumed;
+ * - a pending task starts.
+ *
+ * Position decides order. Recurring tasks sit in the board's order like
+ * everything else, so putting them at the top is what makes them run before the
+ * work below; being due never lets one jump ahead of a task above it.
+ *
+ * `max_active` caps how many sessions may be working at once, recurring tasks
+ * included — while every slot is taken, nothing new starts, and `false` or `0`
+ * removes the cap. A task left marked active with an idle session, or none at
+ * all, holds nothing back: the board marker says a task was started, not that
+ * anything is happening.
  */
 export async function findTask(directory: string, parsed: Checklist, client: PluginClient): Promise<ChecklistTask | undefined> {
   const projectRoot = resolveProjectRoot(directory)
@@ -20,23 +43,33 @@ export async function findTask(directory: string, parsed: Checklist, client: Plu
     // If statuses are unavailable, fall back to selecting by board/state only.
   }
 
-  const scheduledSlugs = scheduledTaskSlugs(projectRoot, parsed)
-  let activeCount = 0
+  const schedules = taskSchedules(projectRoot, parsed)
+  const tasks = readState(projectRoot).tasks
+  const now = Date.now()
 
-  for (const task of parsed.roots) {
-    if (task.state !== "active") continue
-    activeCount++
-    if (scheduledSlugs.has(task.slug)) continue
-    const sessionID = latestSessionForTask(projectRoot, task.slug)
-    if (sessionID && sessionIsBusy(statuses[sessionID])) continue
-    return task
+  /** Working, or dispatched too recently for the runtime to say so yet. */
+  const occupied = (slug: string) => {
+    const run = tasks[slug]
+    const sessionID = run?.session_id ?? ""
+    if (sessionID && sessionIsBusy(statuses[sessionID])) return true
+    const dispatched = run?.last_run ? Date.parse(run.last_run) : Number.NaN
+    return !Number.isNaN(dispatched) && now - dispatched < DISPATCH_GRACE_MS
   }
 
-  const limit = Number(parsed.frontmatter.max_active || 1)
-  if (activeCount >= limit) return undefined
+  const limit = parseMaxActive(parsed.frontmatter.max_active)
+  if (parsed.roots.filter((task) => occupied(task.slug)).length >= limit) return undefined
 
   for (const task of parsed.roots) {
-    if (task.state === "pending" && !scheduledSlugs.has(task.slug)) return task
+    if (task.state === "blocked") continue
+    if (occupied(task.slug)) continue
+
+    const interval = schedules[task.slug]
+    if (interval) {
+      if (scheduleDue(tasks[task.slug]?.last_run, interval, now)) return task
+      continue
+    }
+
+    if (task.state === "active" || task.state === "pending") return task
   }
 
   return undefined

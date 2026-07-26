@@ -22,6 +22,17 @@ export function parseEvery(value: unknown, fallback = 300): number {
   return Number.isFinite(asNumber) ? Math.round(asNumber) : fallback
 }
 
+/**
+ * Parse `max_active` into a session limit. `false`/`0` remove the limit, as
+ * they do for `every`. Anything else that is not a whole number above zero
+ * falls back — a typo must not quietly uncap the board.
+ */
+export function parseMaxActive(value: unknown, fallback = 1): number {
+  if (value === false || value === 0 || value === "0") return Number.POSITIVE_INFINITY
+  const limit = Math.trunc(Number(value))
+  return Number.isFinite(limit) && limit > 0 ? limit : fallback
+}
+
 /** Extract valid OpenCode permission entries (allow/ask/deny) from frontmatter. */
 export function taskPermissions(data: Record<string, unknown>): PermissionConfig {
   const permission = data.permission
