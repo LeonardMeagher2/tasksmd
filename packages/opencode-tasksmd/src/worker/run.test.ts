@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test"
 
-import { extractSessionId, prepareAttachedSession, promptKind, sessionIsBusy, sessionPermissionRules, taskPrompt } from "./run"
+import {
+  extractSessionId,
+  LINKED_TASK_BODY_LIMIT,
+  linkedTaskContextBlock,
+  prepareAttachedSession,
+  promptKind,
+  sessionIsBusy,
+  sessionPermissionRules,
+  taskPrompt,
+} from "./run"
 
 const task = { raw: "- [ ] Do the work", state: "pending" } as any
 
@@ -30,20 +39,41 @@ describe("taskPrompt", () => {
     expect(prompt).toContain("Steps")
   })
 
+  test("fresh prompt can include linked task context", () => {
+    const prompt = taskPrompt(task, "fresh", "Linked task file: docs/task.md\n\n# Goal")
+    expect(prompt).toContain("Linked task context")
+    expect(prompt).toContain("docs/task.md")
+  })
+
   test("resume prompt is short but names the tools", () => {
-    const prompt = taskPrompt(task, "resume")
+    const prompt = taskPrompt(task, "resume", "Linked task file: docs/task.md")
     expect(prompt).toContain("Task current status: pending")
     expect(prompt).not.toContain("Steps")
+    expect(prompt).not.toContain("Linked task context")
     expect(prompt).toContain("task_done")
     expect(prompt).toContain("task_blocked")
     expect(prompt).toContain("task_info")
   })
 
   test("recurring prompt keeps the steps and says the task repeats", () => {
-    const prompt = taskPrompt(task, "recurring")
+    const prompt = taskPrompt(task, "recurring", "Linked task file: docs/task.md")
     expect(prompt).toContain("schedule")
     expect(prompt).toContain("Steps")
+    expect(prompt).not.toContain("Linked task context")
     expect(prompt).toContain("task_done")
+  })
+})
+
+describe("linkedTaskContextBlock", () => {
+  test("includes linked file path and body", () => {
+    const context = linkedTaskContextBlock("docs/task.md", "# Goal\nShip it")
+    expect(context).toContain("Linked task file: docs/task.md")
+    expect(context).toContain("# Goal")
+  })
+
+  test("truncates long linked content with a marker", () => {
+    const context = linkedTaskContextBlock("docs/task.md", "a".repeat(LINKED_TASK_BODY_LIMIT + 20))
+    expect(context).toContain("truncated")
   })
 })
 
