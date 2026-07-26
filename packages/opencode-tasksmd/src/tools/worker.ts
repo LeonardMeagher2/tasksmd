@@ -1,31 +1,29 @@
 import { tool } from "@opencode-ai/plugin"
-import { installTaskWorker, uninstallTaskWorker } from "../tasks-scheduler"
-import { reconcileTaskSchedulers, spawnWorker } from "../tasks-runtime"
-import { readState, writeState } from "../state"
+import {
+  startTaskSchedulers,
+  stopTaskSchedulers,
+  taskSchedulersEnabled,
+} from "../tasks-runtime"
 
-export function createWorkerTools(directory: string, serverUrl?: string) {
+export function createWorkerTools(directory: string) {
   return {
     tasks_start: tool({
-      description: "Reconcile board and per-task schedulers, then run any pending work.",
+      description: "Enable runtime schedulers for this OpenCode session, then run pending work now.",
       args: {},
       async execute() {
-        await reconcileTaskSchedulers(directory)
-        spawnWorker(directory, serverUrl)
-        return "Schedulers reconciled."
+        if (taskSchedulersEnabled(directory)) return "Runtime schedulers are already enabled."
+        startTaskSchedulers(directory)
+        return "Runtime schedulers enabled."
       },
     }),
 
     tasks_stop: tool({
-      description: "Remove all board and per-task schedulers for this project.",
+      description: "Stop runtime schedulers for this OpenCode session.",
       args: {},
       async execute() {
-        const state = readState(directory)
-        for (const slug of Object.keys(state.schedulers)) {
-          await uninstallTaskWorker(directory, slug)
-        }
-        state.schedulers = {}
-        writeState(directory, state)
-        return "All schedulers removed."
+        if (!taskSchedulersEnabled(directory)) return "Runtime schedulers are already stopped."
+        stopTaskSchedulers(directory)
+        return "Runtime schedulers stopped."
       },
     }),
   }

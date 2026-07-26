@@ -31,19 +31,19 @@ function setupProject(files: Record<string, string>): string {
 describe("slugForSession", () => {
   test("matches a recorded session", () => {
     const dir = setupProject({ "TASKS.md": "- [ ] Do work\n" })
-    writeState(dir, { schedulers: {}, tasks: { "do-work": { sessions: ["ses_123"] } } })
+    writeState(dir, { tasks: { "do-work": { session_id: "ses_123" } } })
     expect(slugForSession(dir, "ses_123")).toBe("do-work")
   })
 
   test("returns undefined for an unknown session", () => {
     const dir = setupProject({ "TASKS.md": "- [ ] Do work\n" })
-    writeState(dir, { schedulers: {}, tasks: { "do-work": { sessions: ["ses_123"] } } })
+    writeState(dir, { tasks: { "do-work": { session_id: "ses_123" } } })
     expect(slugForSession(dir, "ses_unknown")).toBeUndefined()
   })
 
   test("returns undefined for an empty sessionID", () => {
     const dir = setupProject({ "TASKS.md": "- [ ] Do work\n" })
-    writeState(dir, { schedulers: {}, tasks: { "do-work": { sessions: ["ses_123"] } } })
+    writeState(dir, { tasks: { "do-work": { session_id: "ses_123" } } })
     expect(slugForSession(dir, "")).toBeUndefined()
   })
 })
@@ -81,7 +81,7 @@ describe("taskAutoApprove", () => {
 describe("createPermissionHook", () => {
   test("sets allow for a task session with auto_approve", async () => {
     const dir = setupProject({ "TASKS.md": "---\nauto_approve: true\n---\n- [ ] Do work\n" })
-    writeState(dir, { schedulers: {}, tasks: { "do-work": { sessions: ["ses_123"] } } })
+    writeState(dir, { tasks: { "do-work": { session_id: "ses_123" } } })
     const hook = createPermissionHook(dir)
     const output = { status: "ask" as "ask" | "deny" | "allow" }
     await hook["permission.ask"]!({ sessionID: "ses_123" } as any, output)
@@ -90,7 +90,7 @@ describe("createPermissionHook", () => {
 
   test("leaves ask for a task without auto_approve", async () => {
     const dir = setupProject({ "TASKS.md": "- [ ] Do work\n" })
-    writeState(dir, { schedulers: {}, tasks: { "do-work": { sessions: ["ses_123"] } } })
+    writeState(dir, { tasks: { "do-work": { session_id: "ses_123" } } })
     const hook = createPermissionHook(dir)
     const output = { status: "ask" as "ask" | "deny" | "allow" }
     await hook["permission.ask"]!({ sessionID: "ses_123" } as any, output)
@@ -99,7 +99,7 @@ describe("createPermissionHook", () => {
 
   test("leaves ask for an unknown (user) session", async () => {
     const dir = setupProject({ "TASKS.md": "---\nauto_approve: true\n---\n- [ ] Do work\n" })
-    writeState(dir, { schedulers: {}, tasks: {} })
+    writeState(dir, { tasks: {} })
     const hook = createPermissionHook(dir)
     const output = { status: "ask" as "ask" | "deny" | "allow" }
     await hook["permission.ask"]!({ sessionID: "ses_user" } as any, output)
@@ -108,7 +108,7 @@ describe("createPermissionHook", () => {
 
   test("does not override a deny status", async () => {
     const dir = setupProject({ "TASKS.md": "---\nauto_approve: true\n---\n- [ ] Do work\n" })
-    writeState(dir, { schedulers: {}, tasks: { "do-work": { sessions: ["ses_123"] } } })
+    writeState(dir, { tasks: { "do-work": { session_id: "ses_123" } } })
     const hook = createPermissionHook(dir)
     const output = { status: "deny" as "ask" | "deny" | "allow" }
     await hook["permission.ask"]!({ sessionID: "ses_123" } as any, output)

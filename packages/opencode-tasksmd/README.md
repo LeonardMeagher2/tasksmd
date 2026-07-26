@@ -89,8 +89,7 @@ is affected; your own sessions are untouched.
 `permission` controls what the task may do: `allow`, `ask`, or `deny`.
 Use it for all tool access, including patterns such as `bash: deny`.
 This plugin writes those rules onto the session before it starts prompting, so
-attached sessions use them too. The standalone CLI path also passes them
-through.
+attached sessions use them too.
 
 Sub-agent spawning (the `task` permission) defaults to `deny` for task sessions.
 Set `permission: { task: allow }` or a per-agent glob like
@@ -103,8 +102,11 @@ permissions for that task.
 
 ## Sessions
 
-When OpenCode is already running, task sessions use it and appear with your
-other sessions. When it is closed, tasks still run on their own.
+Task scheduling is runtime-only. It is off when OpenCode starts, and it stops
+when OpenCode closes.
+
+Use `tasks_start` to enable schedulers for the current runtime, and `tasks_stop`
+to disable them.
 
 ## Bundled Skill
 
@@ -122,7 +124,7 @@ for task sessions. For exact OpenCode config field shapes, use:
 
 ## Controls
 
-Your agent can use `tasks_start` to sync schedulers and run pending work now.
+Your agent can use `tasks_start` to enable runtime schedulers and run pending
+work now.
 
-Or `tasks_stop` to stop background processing and remove all
-schedulers.
+Or `tasks_stop` to stop runtime scheduling for this OpenCode session.

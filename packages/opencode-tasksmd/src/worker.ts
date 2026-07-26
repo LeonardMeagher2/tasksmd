@@ -1,59 +1,33 @@
 import { existsSync, mkdirSync, readFileSync } from "node:fs"
-import path from "node:path"
 
-import { frontmatter, parseChecklist } from "@leonardmeagher2/tasksmd"
-import { parseEvery } from "./config"
-import { readState, stateDir, writeState } from "./state"
+import { parseChecklist } from "@leonardmeagher2/tasksmd"
+import { stateDir } from "./state"
 import { latestSessionForTask } from "./task-session"
-import { installTaskWorker } from "./tasks-scheduler"
-import { log, projectRoot, tasksFile } from "./worker/common"
-import { findServer } from "./worker/server"
+import type { PluginClient } from "./types"
+import { log, resolveProjectRoot, tasksFilePath } from "./worker/common"
 import { findTask } from "./worker/select"
 import { runTask, runTaskBySlug } from "./worker/run"
 
-async function main(): Promise<void> {
+export async function runWorker(directory: string, client: PluginClient, taskSlug?: string): Promise<void> {
+  const projectRoot = resolveProjectRoot(directory)
+  const tasksFile = tasksFilePath(projectRoot)
   if (!existsSync(tasksFile)) return
   mkdirSync(stateDir(projectRoot), { recursive: true })
 
-  const taskArgIndex = process.argv.indexOf("--task")
-  if (taskArgIndex !== -1 && taskArgIndex + 1 < process.argv.length) {
-    await runTaskBySlug(process.argv[taskArgIndex + 1])
+  if (taskSlug) {
+    await runTaskBySlug(projectRoot, taskSlug, client)
     return
   }
 
-  const server = await findServer()
-  log(server ? `server=attached url=${server.url}` : "server=standalone reason=no-matching-server")
-
   const content = readFileSync(tasksFile, "utf-8")
   const parsed = parseChecklist(content)
-  const selected = findTask(parsed)
+  const selected = await findTask(projectRoot, parsed, client)
   if (!selected) {
-    log("status=idle reason=no-pending-tasks")
+    log(projectRoot, "status=idle reason=no-pending-tasks")
     return
   }
 
   // Reuse the same session whenever this task has one.
   const session = latestSessionForTask(projectRoot, selected.slug)
-  await runTask(selected, content, session)
-
-  // A linked task file may declare its own recurring schedule — install it once.
-  // The board's own `every` belongs to the board scheduler, not to this task.
-  let interval = 0
-  if (selected.link) {
-    const linkedFile = path.join(projectRoot, selected.link.path)
-    if (existsSync(linkedFile)) {
-      interval = parseEvery(frontmatter(readFileSync(linkedFile, "utf-8")).every, 0)
-    }
-  }
-  if (interval > 0) {
-    const state = readState(projectRoot)
-    if (!state.schedulers[selected.slug]) {
-      await installTaskWorker(projectRoot, selected.slug, interval)
-      state.schedulers[selected.slug] = interval
-      writeState(projectRoot, state)
-      log(`task=${selected.slug} scheduler=installed interval=${interval}s`)
-    }
-  }
+  await runTask(projectRoot, selected, content, session, client)
 }
-
-await main()

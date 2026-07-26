@@ -50,23 +50,25 @@ async function toastFinishedSession(client: PluginClient, directory: string, ses
   await new Promise((resolve) => setTimeout(resolve, 2000))
   const state = readState(directory)
   for (const [slug, run] of Object.entries(state.tasks)) {
-    if (!run.sessions.includes(sessionID) || !run.status || run.status === "running") continue
-    const key = `${slug}:${run.last_completed ?? ""}:${run.status}`
+    if (run.session_id !== sessionID) continue
+    if (typeof run.exit_code !== "number") continue
+    const outcome = run.exit_code === 0 ? "success" : "failed"
+    const key = `${slug}:${run.last_completed ?? ""}:${run.exit_code}`
     if (toastedRuns.has(key)) return
     if (toastedRuns.size > 500) toastedRuns.clear()
     toastedRuns.add(key)
-    const variant = run.status === "success" ? "success" : run.status === "failed" ? "error" : "info"
-    await showToast(client, `Task ${slug} ${run.status}`, variant, "tasksmd")
+    const variant = run.exit_code === 0 ? "success" : "error"
+    await showToast(client, `Task ${slug} ${outcome}`, variant, "tasksmd")
     return
   }
 }
 
-export function createEventHook(client: PluginClient, directory: string, serverUrl?: string) {
+export function createEventHook(client: PluginClient, directory: string) {
   return {
-    event: async ({ event }: { event: any }) => {
+    event: async ({ event }: { event: { type?: string; properties?: Record<string, unknown> } }) => {
       if (event.type === "session.idle") {
         const sessionID = event.properties?.sessionID
-        if (sessionID) await toastFinishedSession(client, directory, sessionID)
+        if (typeof sessionID === "string" && sessionID) await toastFinishedSession(client, directory, sessionID)
         return
       }
 
@@ -79,15 +81,12 @@ export function createEventHook(client: PluginClient, directory: string, serverU
 
       const existing = debounceTimers.get(directory)
       if (existing) clearTimeout(existing)
-      debounceTimers.set(
-        directory,
-        setTimeout(() => {
-          debounceTimers.delete(directory)
-          tryRunTask(directory, serverUrl).catch((error) => {
-            console.error("[tasksmd] worker run failed:", error)
-          })
-        }, DEBOUNCE_MS),
-      )
+      const timer = setTimeout(() => {
+        debounceTimers.delete(directory)
+        tryRunTask(directory)
+      }, DEBOUNCE_MS)
+      timer.unref?.()
+      debounceTimers.set(directory, timer)
     },
   }
 }

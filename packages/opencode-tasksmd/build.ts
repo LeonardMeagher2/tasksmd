@@ -19,26 +19,8 @@ if (!plugin.success) {
   process.exit(1)
 }
 
-// The worker is copied standalone into a project's .opencode/tasks/ directory
-// where no node_modules exist — it must be fully self-contained. It runs
-// under bun (CLI hosts) and plain Node/Electron (desktop hosts), so build for
-// the lowest common denominator: node.
-const worker = await Bun.build({
-  entrypoints: ["src/worker.ts"],
-  outdir: "dist",
-  target: "node",
-  compile: false,
-  naming: "worker.mjs",
-  format: "esm",
-  minify: true,
-})
-if (!worker.success) {
-  for (const log of worker.logs) console.error(log)
-  process.exit(1)
-}
-
-// The debug CLI script is a standalone diagnostic tool. Like the worker it
-// runs outside of OpenCode's plugin context so it must be self-contained.
+// The debug CLI script is a standalone diagnostic tool and must be
+// self-contained.
 const debugCli = await Bun.build({
   entrypoints: ["src/debug-cli.ts"],
   outdir: "dist",

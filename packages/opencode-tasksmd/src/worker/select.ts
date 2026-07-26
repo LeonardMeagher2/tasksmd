@@ -1,28 +1,34 @@
 import type { Checklist, ChecklistTask } from "@leonardmeagher2/tasksmd"
-import { readState } from "../state"
-import { alive } from "./server"
-import { log, projectRoot } from "./common"
+import { scheduledTaskSlugs } from "../schedule"
+import { latestSessionForTask } from "../task-session"
+import type { PluginClient, SessionStatus } from "../types"
+import { resolveProjectRoot } from "./common"
+import { sessionIsBusy, sessionStatuses } from "./run"
 
 /**
- * Pick the next root task to run. Active tasks with a dead or missing run
- * record are resumed; a running task is skipped so other work can proceed
- * up to the board's max_active limit.
+ * Pick the next root task to run. Active tasks are resumed unless their
+ * current session is observably busy in the runtime. Tasks that carry their own
+ * schedule are left to their timer.
  */
-export function findTask(parsed: Checklist): ChecklistTask | undefined {
-  const state = readState(projectRoot)
-  const scheduledSlugs = new Set(Object.keys(state.schedulers).filter((s) => s !== ""))
+export async function findTask(directory: string, parsed: Checklist, client: PluginClient): Promise<ChecklistTask | undefined> {
+  const projectRoot = resolveProjectRoot(directory)
+  let statuses: Record<string, SessionStatus> = {}
+  try {
+    const response = await sessionStatuses(client, projectRoot)
+    statuses = response.data ?? {}
+  } catch {
+    // If statuses are unavailable, fall back to selecting by board/state only.
+  }
+
+  const scheduledSlugs = scheduledTaskSlugs(projectRoot, parsed)
   let activeCount = 0
 
   for (const task of parsed.roots) {
     if (task.state !== "active") continue
     activeCount++
     if (scheduledSlugs.has(task.slug)) continue
-    const runState = state.tasks[task.slug]
-    if (!runState) return task
-    if (runState.status === "running" && runState.pid && alive(runState.pid)) {
-      log(`task=${task.slug} status=running pid=${runState.pid} action=skip`)
-      continue
-    }
+    const sessionID = latestSessionForTask(projectRoot, task.slug)
+    if (sessionID && sessionIsBusy(statuses[sessionID])) continue
     return task
   }
 

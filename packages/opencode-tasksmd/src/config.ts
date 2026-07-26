@@ -27,14 +27,15 @@ export function taskPermissions(data: Record<string, unknown>): PermissionConfig
   const permission = data.permission
   if (!permission || typeof permission !== "object" || Array.isArray(permission)) return {}
   const valid = (value: unknown) => value === "allow" || value === "ask" || value === "deny"
-  return Object.fromEntries(Object.entries(permission).flatMap(([name, value]) => {
+  const entries = Object.entries(permission).flatMap<[string, unknown]>(([name, value]) => {
     if (valid(value)) return [[name, value]]
     if (value && typeof value === "object" && !Array.isArray(value)) {
       const rules = Object.fromEntries(Object.entries(value).filter(([, action]) => valid(action)))
       return Object.keys(rules).length ? [[name, rules]] : []
     }
     return []
-  }))
+  })
+  return Object.fromEntries(entries)
 }
 
 /** Add `task: "deny"` when the frontmatter doesn't set an explicit `task` permission. */

@@ -17,11 +17,16 @@ bun install
 
 ```sh
 bun test
+bun run typecheck
 bun run build
 bun run dev
 ```
 
-`bun run dev` builds the local plugin bundle at `.opencode/plugins/tasks.js` and the worker at `.opencode/tasks/worker.mjs`.
+`bun run dev` builds the local plugin bundle at `.opencode/plugins/tasks.js`.
+
+`bun run typecheck` runs `tsc --noEmit` over the scripts and both packages.
+`packages/tasksmd` emits its declarations during `build`, so run `bun run build`
+before typechecking a fresh checkout.
 
 ## Releases
 

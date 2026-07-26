@@ -2,10 +2,8 @@ import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { parseChecklist } from "@leonardmeagher2/tasksmd"
 import { parseEvery } from "./config"
+import { boardSchedules } from "./schedule"
 import { logFile, readState } from "./state"
-import { schedulerExists } from "./tasks-scheduler"
-import { workerAsset, workerRuntime } from "./utils"
-import { findServer } from "./worker/server"
 
 const directory = resolveDir()
 const lines: string[] = []
@@ -25,22 +23,14 @@ const counts: Record<string, number> = {}
 for (const t of parsed.roots) counts[t.state] = (counts[t.state] ?? 0) + 1
 lines.push(`  roots: ${parsed.roots.length} (${Object.entries(counts).map(([k, v]) => `${k}:${v}`).join(", ")})`)
 
+// Scheduler and session-API status live in the OpenCode runtime; this CLI runs
+// outside it, so it reports only what is on disk. Use `tasks_debug` for the rest.
 const state = readState(directory)
-lines.push(`state: ${Object.keys(state.schedulers).length} scheduler(s), ${Object.keys(state.tasks).length} task record(s)`)
-for (const [slug, interval] of Object.entries(state.schedulers)) {
-  const registered = await schedulerExists(directory, slug)
-  lines.push(`  scheduler ${slug || "(board)"}: every ${interval}s, registered=${registered}`)
+const configured = boardSchedules(directory, parsed)
+lines.push(`state: ${Object.keys(configured).length} configured scheduler(s), ${Object.keys(state.tasks).length} task record(s)`)
+for (const [slug, interval] of Object.entries(configured)) {
+  lines.push(`  scheduler ${slug || "(board)"}: every ${interval}s`)
 }
-
-const asset = workerAsset(directory)
-lines.push(`worker asset: ${existsSync(asset) ? asset : `MISSING (${asset})`}`)
-
-const runtime = workerRuntime()
-lines.push(`runtime: ${process.versions.bun ? "bun (opencode CLI host)" : "node (desktop host)"} \u2192 ${runtime.program}`)
-
-const server = await findServer(directory)
-lines.push(`server: ${server ? `attached ${server.url}` : "standalone (no reachable opencode server)"}`)
-if (state.server_url) lines.push(`  recorded: ${state.server_url} (password ${state.server_password ? "set" : "not set"})`)
 
 const next = parsed.roots.find((t) => t.state === "pending")
 lines.push(`next pending: ${next ? next.slug : "none"}`)

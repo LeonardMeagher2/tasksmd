@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test"
 
+import type { SessionClient } from "../types"
 import {
-  extractSessionId,
   LINKED_TASK_BODY_LIMIT,
+  NO_SESSION,
   linkedTaskContextBlock,
   prepareAttachedSession,
   promptKind,
+  resolveTaskSession,
   sessionIsBusy,
   sessionPermissionRules,
   taskPrompt,
@@ -18,8 +20,11 @@ describe("promptKind", () => {
     expect(promptKind(task, "")).toBe("fresh")
   })
 
-  test("resume for an active task", () => {
-    expect(promptKind({ ...task, state: "active" }, "")).toBe("resume")
+  test("active task without a session is treated as fresh", () => {
+    expect(promptKind({ ...task, state: "active" }, "")).toBe("fresh")
+  })
+
+  test("resume for an active task with an existing session", () => {
     expect(promptKind({ ...task, state: "active" }, "session-1")).toBe("resume")
   })
 
@@ -29,6 +34,10 @@ describe("promptKind", () => {
 
   test("recurring wins over resume for scheduled reruns", () => {
     expect(promptKind({ ...task, state: "active" }, "session-1", true)).toBe("recurring")
+  })
+
+  test("scheduled rerun without a session is treated as fresh", () => {
+    expect(promptKind(task, "", true)).toBe("fresh")
   })
 })
 
@@ -74,29 +83,6 @@ describe("linkedTaskContextBlock", () => {
   test("truncates long linked content with a marker", () => {
     const context = linkedTaskContextBlock("docs/task.md", "a".repeat(LINKED_TASK_BODY_LIMIT + 20))
     expect(context).toContain("truncated")
-  })
-})
-
-describe("extractSessionId", () => {
-  test("reads sessionID from a JSON event line", () => {
-    expect(extractSessionId(`{"type":"start","sessionID":"ses_123"}`)).toBe("ses_123")
-  })
-
-  test("finds a nested sessionID", () => {
-    expect(extractSessionId(`{"type":"part","part":{"sessionID":"ses_456"}}`)).toBe("ses_456")
-  })
-
-  test("skips stderr noise and broken lines", () => {
-    const text = `warning: something\n{not json\n{"type":"start","sessionID":"ses_789"}`
-    expect(extractSessionId(text)).toBe("ses_789")
-  })
-
-  test("ignores sessionID mentioned in plain text", () => {
-    expect(extractSessionId(`error: "sessionID":"ses_fake" not found`)).toBe("")
-  })
-
-  test("returns empty when there is no sessionID", () => {
-    expect(extractSessionId(`{"type":"done"}\nplain text`)).toBe("")
   })
 })
 
@@ -184,36 +170,71 @@ describe("sessionPermissionRules", () => {
   })
 })
 
+function sessionClient(overrides: Partial<SessionClient["session"]> = {}): SessionClient {
+  return {
+    session: {
+      get: async () => {
+        throw new Error("get should not be called")
+      },
+      update: async () => {
+        throw new Error("update should not be called")
+      },
+      create: async () => {
+        throw new Error("create should not be called")
+      },
+      ...overrides,
+    },
+  }
+}
+
+describe("resolveTaskSession", () => {
+  test("returns no session for an empty id without calling the API", async () => {
+    expect(await resolveTaskSession(sessionClient(), "/proj", "")).toEqual(NO_SESSION)
+  })
+
+  test("returns the id and the rules the session already carries", async () => {
+    const permission = [{ permission: "read", pattern: "*", action: "allow" as const }]
+    const client = sessionClient({ get: async () => ({ data: { id: "session-1", permission } }) })
+
+    expect(await resolveTaskSession(client, "/proj", "session-1")).toEqual({ id: "session-1", permission })
+  })
+
+  test("drops a session the runtime no longer knows", async () => {
+    const client = sessionClient({ get: async () => ({ error: { name: "NotFoundError", message: "session not found" } }) })
+
+    expect(await resolveTaskSession(client, "/proj", "old-session")).toEqual(NO_SESSION)
+  })
+
+  test("throws when the lookup fails for a reason other than a missing session", async () => {
+    const client = sessionClient({ get: async () => ({ error: { name: "UnknownError", message: "backend unavailable" } }) })
+
+    await expect(resolveTaskSession(client, "/proj", "session-1")).rejects.toThrow("Failed to load task session")
+  })
+})
+
 describe("prepareAttachedSession", () => {
   test("creates a new session with permission rules", async () => {
     const calls: Array<{ method: string; input: unknown }> = []
-    const client = {
-      session: {
-        get: async () => {
-          throw new Error("get should not be called")
-        },
-        update: async (input: unknown) => {
-          calls.push({ method: "update", input })
-          return {}
-        },
-        create: async (input: unknown) => {
-          calls.push({ method: "create", input })
-          return { data: { id: "new-session" } }
-        },
+    const client = sessionClient({
+      create: async (input: unknown) => {
+        calls.push({ method: "create", input })
+        return { data: { id: "new-session" } }
       },
-    }
+    })
 
-    const permission = [{ permission: "*", pattern: "*", action: "deny" }]
-    const id = await prepareAttachedSession(client, "/proj", "", "task:example", permission)
+    const permission = [{ permission: "*", pattern: "*", action: "deny" as const }]
+    const id = await prepareAttachedSession(client, "/proj", NO_SESSION, "task:example", permission)
 
     expect(id).toBe("new-session")
     expect(calls).toEqual([
       {
         method: "create",
         input: {
-          directory: "/proj",
-          title: "task:example",
-          permission,
+          query: { directory: "/proj" },
+          body: {
+            title: "task:example",
+            permission,
+          },
         },
       },
     ])
@@ -221,59 +242,64 @@ describe("prepareAttachedSession", () => {
 
   test("updates an existing session when it is missing task rules", async () => {
     const calls: Array<{ method: string; input: unknown }> = []
-    const client = {
-      session: {
-        get: async () => ({ data: { id: "session-1", permission: [{ permission: "read", pattern: "*", action: "allow" }] } }),
-        update: async (input: unknown) => {
-          calls.push({ method: "update", input })
-          return {}
-        },
-        create: async () => {
-          throw new Error("create should not be called")
-        },
+    const client = sessionClient({
+      update: async (input: unknown) => {
+        calls.push({ method: "update", input })
+        return {}
       },
-    }
+    })
 
-    const permission = [{ permission: "*", pattern: "*", action: "deny" }]
-    const id = await prepareAttachedSession(client, "/proj", "session-1", "task:example", permission)
+    const existing = [{ permission: "read", pattern: "*", action: "allow" as const }]
+    const permission = [{ permission: "*", pattern: "*", action: "deny" as const }]
+    const id = await prepareAttachedSession(
+      client,
+      "/proj",
+      { id: "session-1", permission: existing },
+      "task:example",
+      permission,
+    )
 
     expect(id).toBe("session-1")
     expect(calls).toEqual([
       {
         method: "update",
         input: {
-          sessionID: "session-1",
-          directory: "/proj",
-          permission: [
-            { permission: "read", pattern: "*", action: "allow" },
-            ...permission,
-          ],
+          path: { id: "session-1" },
+          query: { directory: "/proj" },
+          body: { permission: [...existing, ...permission] },
         },
       },
     ])
   })
 
   test("does not update when the session already has the task rules", async () => {
-    const client = {
-      session: {
-        get: async () => ({
-          data: {
-            id: "session-1",
-            permission: [{ permission: "*", pattern: "*", action: "deny" }],
-          },
-        }),
-        update: async () => {
-          throw new Error("update should not be called")
-        },
-        create: async () => {
-          throw new Error("create should not be called")
-        },
-      },
-    }
-
-    const permission = [{ permission: "*", pattern: "*", action: "deny" }]
-    const id = await prepareAttachedSession(client, "/proj", "session-1", "task:example", permission)
+    const permission = [{ permission: "*", pattern: "*", action: "deny" as const }]
+    const id = await prepareAttachedSession(
+      sessionClient(),
+      "/proj",
+      { id: "session-1", permission },
+      "task:example",
+      permission,
+    )
 
     expect(id).toBe("session-1")
+  })
+
+  test("throws when applying permissions fails", async () => {
+    const client = sessionClient({ update: async () => ({ error: { name: "UnknownError" } }) })
+
+    await expect(
+      prepareAttachedSession(client, "/proj", { id: "session-1", permission: [] }, "task:example", [
+        { permission: "*", pattern: "*", action: "deny" },
+      ]),
+    ).rejects.toThrow("Failed to apply task permissions")
+  })
+
+  test("throws when creating a session fails", async () => {
+    const client = sessionClient({ create: async () => ({ error: { name: "UnknownError" } }) })
+
+    await expect(prepareAttachedSession(client, "/proj", NO_SESSION, "task:example", [])).rejects.toThrow(
+      "Failed to create task session",
+    )
   })
 })

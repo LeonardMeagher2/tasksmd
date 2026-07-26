@@ -1,4 +1,4 @@
-import { cp, mkdir } from "node:fs/promises"
+import { rm } from "node:fs/promises"
 
 // Local development bundle: a single self-contained plugin file that OpenCode
 // can load without resolving any bare imports (the background dependency
@@ -22,9 +22,6 @@ if (!result.success) {
   process.exit(1)
 }
 
-// The worker asset is installed from a sibling of the plugin file in
-// source/dist mode; in bundle mode we place it directly.
-await mkdir(".opencode/tasks", { recursive: true })
-await cp("packages/opencode-tasksmd/dist/worker.mjs", ".opencode/tasks/worker.mjs")
+await rm(".opencode/tasks", { recursive: true, force: true })
 
 console.log("Local plugin bundle: .opencode/plugins/tasks.js")

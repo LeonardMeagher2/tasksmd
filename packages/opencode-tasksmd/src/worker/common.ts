@@ -3,12 +3,21 @@ import path from "node:path"
 
 import { logFile } from "../state"
 
-export const projectRoot = path.resolve(process.cwd())
-export const tasksFile = path.join(projectRoot, "TASKS.md")
+export function resolveProjectRoot(directory: string): string {
+  return path.resolve(directory)
+}
 
-export function log(message: string): void {
+export function tasksFilePath(directory: string): string {
+  return path.join(resolveProjectRoot(directory), "TASKS.md")
+}
+
+/**
+ * Append to the project's worker log. Runs inside the OpenCode host process, so
+ * it must not write to stdout — `tasks_debug` reads the log file instead.
+ */
+export function log(directory: string, message: string): void {
+  const projectRoot = resolveProjectRoot(directory)
   const line = `[tasks ${new Date().toISOString()}] ${message}`
-  console.log(line)
   try {
     const file = logFile(projectRoot)
     mkdirSync(path.dirname(file), { recursive: true })
