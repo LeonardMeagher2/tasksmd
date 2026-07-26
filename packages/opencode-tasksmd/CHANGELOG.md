@@ -1,5 +1,19 @@
 # @leonardmeagher2/opencode-tasksmd
 
+## 0.7.1
+
+### Patch Changes
+
+- Fix attached task worker sessions to use the v2 OpenCode SDK session API so session permission rules are sent in the supported request shape. Existing session permissions are preserved when task-specific rules are added, preventing HTTP content-type decode errors while creating or updating attached task sessions.
+
+## 0.7.0
+
+### Minor Changes
+
+- Add `auto_approve` frontmatter option. When true, permission requests for the
+  task's session are auto-approved (like `opencode run --auto`); rules set to
+  `deny` still apply. Works at board and linked-task-file level.
+
 ## 0.6.2
 
 ### Patch Changes

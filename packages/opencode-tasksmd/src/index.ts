@@ -2,6 +2,7 @@ import { type Plugin } from "@opencode-ai/plugin"
 
 import { createConfigHook } from "./hooks/config"
 import { createEventHook } from "./hooks/event"
+import { createPermissionHook } from "./hooks/permission"
 import { createDebugTool } from "./tools/debug"
 import { createTaskTools } from "./tools/task"
 import { createWorkerTools } from "./tools/worker"
@@ -29,6 +30,7 @@ export const TasksPlugin: Plugin = async ({ directory, client, serverUrl }) => {
 
   return {
     ...createConfigHook(),
+    ...createPermissionHook(directory),
     event: createEventHook(client, directory, server).event,
     tool: { ...createWorkerTools(directory, server), ...createTaskTools(directory), ...createDebugTool(directory) },
   }

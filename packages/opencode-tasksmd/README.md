@@ -63,6 +63,7 @@ every: 5 minutes
 model: ollama/unsloth/Qwen3.5-9B-GGUF:Q4_K_M
 agent: build
 max_active: 1
+auto_approve: false
 permission:
   bash: deny
 ---
@@ -78,6 +79,10 @@ Use `false` or `0` to disable it. Examples: `5 minutes`, `1h`, `3600`, `false`.
 agent.
 
 `max_active` limits how many tasks run at the same time.
+
+`auto_approve` auto-approves permission requests for the task's session, like
+`opencode run --auto`. Rules set to `deny` still block. Only the task's session
+is affected; your own sessions are untouched.
 
 `permission` controls what the task may do: `allow`, `ask`, or `deny`.
 Use it for all tool access, including patterns such as `bash: deny`.

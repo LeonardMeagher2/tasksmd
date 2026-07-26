@@ -1,13 +1,14 @@
 import { spawn } from "node:child_process"
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { createOpencodeClient } from "@opencode-ai/sdk"
+import { createOpencodeClient } from "@opencode-ai/sdk/v2/client"
 
 import { parseChecklist, replaceTask } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
 import { modelValue, permissionRules, taskPermissions } from "../config"
 import { readState, updateTask } from "../state"
-import { loadTaskConfig, log, projectRoot, tasksFile } from "./common"
+import { loadTaskConfig } from "../task-config"
+import { log, projectRoot, tasksFile } from "./common"
 import { findOpencode, findServer, type ServerConnection } from "./server"
 
 export type PromptKind = "fresh" | "resume" | "recurring"
@@ -51,7 +52,7 @@ export function promptKind(task: ChecklistTask, session: string, recurring = fal
   return "fresh"
 }
 
-type PermissionRule = Record<string, string>
+type PermissionRule = { permission: string; pattern: string; action: "ask" | "allow" | "deny" }
 
 function ruleKey(rule: PermissionRule): string {
   return `${rule.permission}\u0000${rule.pattern}\u0000${rule.action}`
@@ -59,7 +60,7 @@ function ruleKey(rule: PermissionRule): string {
 
 export function sessionPermissionRules(taskConfig: Record<string, unknown>): PermissionRule[] {
   return [
-    ...permissionRules(taskPermissions(taskConfig)),
+    ...permissionRules(taskPermissions(taskConfig)) as PermissionRule[],
     { permission: "task_done", pattern: "*", action: "allow" },
     { permission: "task_blocked", pattern: "*", action: "allow" },
     { permission: "task_info", pattern: "*", action: "allow" },
@@ -79,7 +80,7 @@ export async function prepareAttachedSession(
   let id = sessionId
 
   if (id) {
-    const existing = await client.session.get({ path: { id }, query: { directory } })
+    const existing = await client.session.get({ sessionID: id, directory })
     if (existing.error) {
       id = ""
     } else if (permission.length > 0) {
@@ -88,9 +89,9 @@ export async function prepareAttachedSession(
       const missing = permission.filter((rule) => !currentRules.has(ruleKey(rule)))
       if (missing.length > 0) {
         const updated = await client.session.update({
-          path: { id },
-          query: { directory },
-          body: { permission: missing },
+          sessionID: id,
+          directory,
+          permission: [...current, ...missing],
         })
         if (updated?.error) throw new Error(`Failed to apply task permissions: ${JSON.stringify(updated.error)}`)
       }
@@ -99,11 +100,9 @@ export async function prepareAttachedSession(
 
   if (!id) {
     const created = await client.session.create({
-      body: {
-        title,
-        ...(permission.length > 0 ? { permission } : {}),
-      },
-      query: { directory },
+      directory,
+      title,
+      ...(permission.length > 0 ? { permission } : {}),
     })
     if (created?.error) throw new Error(`Failed to create task session: ${JSON.stringify(created.error)}`)
     id = created.data?.id || created.id || ""
@@ -135,7 +134,7 @@ async function runAttached(
   const id = await prepareAttachedSession(client, projectRoot, sessionId, `task:${slug}`, rules)
   if (!id) throw new Error("OpenCode did not return a session ID")
 
-  const statuses = await client.session.status({ query: { directory: projectRoot } })
+  const statuses = await client.session.status({ directory: projectRoot })
   const status = statuses.data?.[id]
   if (status?.type === "retry") throw new Error(`session retry failed: ${status.message}`)
   if (sessionIsBusy(status)) {
@@ -148,13 +147,11 @@ async function runAttached(
 
   // The server continues the turn after promptAsync returns.
   const sent = await client.session.promptAsync({
-    path: { id },
-    query: { directory: projectRoot },
-    body: {
-      agent: agent || undefined,
-      model: selectedModel,
-      parts: [{ type: "text", text: prompt }],
-    },
+    sessionID: id,
+    directory: projectRoot,
+    agent: agent || undefined,
+    model: selectedModel,
+    parts: [{ type: "text", text: prompt }],
   })
   if (sent.error) throw new Error(JSON.stringify(sent.error))
   return { session: id, skipped: false }
@@ -252,9 +249,10 @@ export async function runTask(task: ChecklistTask, content: string, session: str
     throw new Error(`Linked task file not found: ${task.link.path}`)
   }
 
-  const taskConfig = loadTaskConfig(content, task)
+  const taskConfig = loadTaskConfig(projectRoot, content, task)
   const model = typeof taskConfig.model === "string" ? taskConfig.model : ""
   const agent = typeof taskConfig.agent === "string" ? taskConfig.agent : ""
+  const autoApprove = Boolean(taskConfig.auto_approve)
   const taskPermissionRules = taskPermissions(taskConfig)
 
   const prompt = taskPrompt(task, kind)
@@ -274,6 +272,7 @@ export async function runTask(task: ChecklistTask, content: string, session: str
     if (server.password) args.push("--password", server.password)
   }
   if (model) args.push("--model", model)
+  if (autoApprove) args.push("--auto")
 
   log(`task=${task.slug} kind=${kind} session=${session || "new"}`)
   log(`task=${task.slug} action=start binary=${opencode}`)

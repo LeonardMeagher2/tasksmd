@@ -119,11 +119,9 @@ describe("prepareAttachedSession", () => {
       {
         method: "create",
         input: {
-          body: {
-            title: "task:example",
-            permission,
-          },
-          query: { directory: "/proj" },
+          directory: "/proj",
+          title: "task:example",
+          permission,
         },
       },
     ])
@@ -152,9 +150,12 @@ describe("prepareAttachedSession", () => {
       {
         method: "update",
         input: {
-          path: { id: "session-1" },
-          query: { directory: "/proj" },
-          body: { permission },
+          sessionID: "session-1",
+          directory: "/proj",
+          permission: [
+            { permission: "read", pattern: "*", action: "allow" },
+            ...permission,
+          ],
         },
       },
     ])
