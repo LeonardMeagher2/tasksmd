@@ -68,7 +68,7 @@ describe("taskPrompt", () => {
     expect(prompt).not.toContain("Steps")
     expect(prompt).not.toContain("Linked task context")
     expect(prompt).toContain("task_done")
-    expect(prompt).toContain("with a reason")
+    expect(prompt).toContain("blocked_reason")
     expect(prompt).toContain("task_info")
   })
 
@@ -122,6 +122,7 @@ describe("sessionPermissionRules", () => {
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
       { permission: "tasks_stop", pattern: "*", action: "deny" },
+      { permission: "tasks_run", pattern: "*", action: "deny" },
     ])
   })
 
@@ -134,6 +135,7 @@ describe("sessionPermissionRules", () => {
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
       { permission: "tasks_stop", pattern: "*", action: "deny" },
+      { permission: "tasks_run", pattern: "*", action: "deny" },
     ])
   })
 
@@ -146,6 +148,7 @@ describe("sessionPermissionRules", () => {
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
       { permission: "tasks_stop", pattern: "*", action: "deny" },
+      { permission: "tasks_run", pattern: "*", action: "deny" },
     ])
   })
 
@@ -157,6 +160,7 @@ describe("sessionPermissionRules", () => {
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
       { permission: "tasks_stop", pattern: "*", action: "deny" },
+      { permission: "tasks_run", pattern: "*", action: "deny" },
     ])
   })
 
@@ -168,6 +172,7 @@ describe("sessionPermissionRules", () => {
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
       { permission: "tasks_stop", pattern: "*", action: "deny" },
+      { permission: "tasks_run", pattern: "*", action: "deny" },
     ])
   })
 
@@ -179,6 +184,7 @@ describe("sessionPermissionRules", () => {
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
       { permission: "tasks_stop", pattern: "*", action: "deny" },
+      { permission: "tasks_run", pattern: "*", action: "deny" },
     ])
   })
 })
@@ -248,8 +254,9 @@ describe("permission rule precedence", () => {
   })
 
   test("the plugin's own rules cannot be overridden by a board", () => {
-    const rules = sessionPermissionRules({ permission: { "*": "allow", tasks_stop: "allow" } })
+    const rules = sessionPermissionRules({ permission: { "*": "allow", tasks_stop: "allow", tasks_run: "allow" } })
     expect(action(rules, "tasks_stop")).toBe("deny")
+    expect(action(rules, "tasks_run")).toBe("deny")
     expect(action(rules, "task_done")).toBe("allow")
   })
 })
@@ -511,6 +518,15 @@ describe("runTaskBySlug", () => {
 
     const { client, prompts } = countingClient()
     await runTaskBySlug(dir, "hourly-review", client)
+    expect(prompts()).toBe(1)
+  })
+
+  test("a forced run ignores the recurring due-check", async () => {
+    const dir = recurringProject()
+    updateTask(dir, "hourly-review", { last_run: new Date().toISOString() })
+
+    const { client, prompts } = countingClient()
+    await runTaskBySlug(dir, "hourly-review", client, true)
     expect(prompts()).toBe(1)
   })
 

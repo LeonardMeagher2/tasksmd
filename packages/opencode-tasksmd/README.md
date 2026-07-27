@@ -53,9 +53,10 @@ Indented subtasks stay under their parent task.
 ```
 
 OpenCode marks a task as in progress when it starts. The agent working on the
-task calls `task_done` after checking its result — with no reason to mark the
-task done, or with a reason to mark it blocked. The agent can call `task_info`
-at any time to re-read its task.
+task calls `task_done` after checking its result — with no arguments to mark
+the task done, or with `blocked_reason` to mark it blocked. A blocked reason
+is kept and shown by `tasks_debug` and the blocked notification. The agent can
+call `task_info` at any time to re-read its task.
 
 ## Order of Work
 
@@ -148,7 +149,7 @@ and stays denied under `auto_approve`. To opt in, set
 Task sessions always:
 
 - may call `task_done` and `task_info`;
-- may not call `tasks_start`, `tasks_stop`, or `tasks_debug`.
+- may not call `tasks_start`, `tasks_stop`, `tasks_run`, or `tasks_debug`.
 
 These rules are applied last, so a board cannot override them: a task can
 report its own status, but it cannot control the scheduler.
@@ -175,14 +176,15 @@ For your own sessions:
 - `tasks_start`: turn on background work for this session, then start any
   waiting tasks.
 - `tasks_stop`: turn background work off for this session.
+- `tasks_run`: run one task now by slug, whether background work is on or off.
 - `tasks_debug`: show a diagnostic report — board summary, saved run state,
-  scheduler status, connection to OpenCode, the next waiting task, and recent
-  worker log lines.
+  blocked reasons, scheduler status, connection to OpenCode, the next waiting
+  task, and recent worker log lines.
 
 For the agent running a task:
 
-- `task_done`: finish the task. With no reason it marks the task done; with a
-  reason it marks the task blocked.
+- `task_done`: finish the task. Call it with nothing to mark the task done,
+  or with `blocked_reason` to mark the task blocked.
 - `task_info`: show the task — its text, its line in `TASKS.md`, and the
   linked file's content (without its frontmatter).
 

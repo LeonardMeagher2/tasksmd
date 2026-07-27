@@ -4,6 +4,7 @@ import path from "node:path"
 import { tool } from "@opencode-ai/plugin"
 import { taskContext } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
+import { updateTask } from "../state"
 import { slugForSession } from "../task-session"
 import { linkedTaskContextBlock } from "../worker/run"
 
@@ -32,16 +33,17 @@ export function taskInfoText(slug: string, boardPath: string, task: ChecklistTas
 export function createTaskTools(directory: string) {
   return {
     task_done: tool({
-      description: "Finish your task. If you include a reason, the task is marked blocked with that reason instead of done.",
+      description: "Finish your task. Call it with no arguments when the work is done. Pass blocked_reason when you cannot finish, and the task is marked blocked with that reason instead.",
       args: {
-        reason: tool.schema.string().optional().describe("Why the task is blocked. Leave empty when the task is done."),
+        blocked_reason: tool.schema.string().optional().describe("Why the task is blocked. Leave empty when the task is done."),
       },
       async execute(args, ctx) {
         const slug = slugForSession(directory, ctx.sessionID)
         if (!slug) return "This session is not linked to a task."
         const context = taskContext(directory, slug)
-        const reason = args.reason?.trim() ?? ""
+        const reason = args.blocked_reason?.trim() ?? ""
         if (reason) {
+          updateTask(directory, slug, { blocked_reason: reason })
           if (!context.markBlocked()) {
             return `Task "${slug}" was not found on the board.`
           }
@@ -50,6 +52,7 @@ export function createTaskTools(directory: string) {
         if (!context.markDone()) {
           return `Task "${slug}" was not found on the board.`
         }
+        updateTask(directory, slug, { blocked_reason: undefined })
         return `Task "${slug}" marked done.`
       },
     }),

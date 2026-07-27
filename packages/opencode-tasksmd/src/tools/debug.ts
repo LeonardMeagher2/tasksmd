@@ -33,6 +33,11 @@ export function createDebugTool(directory: string) {
         const configured = boardSchedules(directory, parsed)
         lines.push(`runtime scheduler: ${taskSchedulersEnabled(directory) ? "enabled" : "disabled"}`)
         lines.push(`state: ${Object.keys(configured).length} configured scheduler(s), ${Object.keys(state.tasks).length} task record(s)`)
+        for (const t of parsed.roots) {
+          if (t.state !== "blocked") continue
+          const reason = state.tasks[t.slug]?.blocked_reason
+          lines.push(`  blocked ${t.slug}${reason ? `: ${reason}` : ""}`)
+        }
         for (const [slug, interval] of Object.entries(configured)) {
           lines.push(`  scheduler ${slug || "(board)"}: every ${interval}s${scheduleDetail(state, slug, interval)}`)
         }
