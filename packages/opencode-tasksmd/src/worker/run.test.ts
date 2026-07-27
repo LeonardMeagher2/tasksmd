@@ -68,7 +68,7 @@ describe("taskPrompt", () => {
     expect(prompt).not.toContain("Steps")
     expect(prompt).not.toContain("Linked task context")
     expect(prompt).toContain("task_done")
-    expect(prompt).toContain("task_blocked")
+    expect(prompt).toContain("with a reason")
     expect(prompt).toContain("task_info")
   })
 
@@ -107,7 +107,6 @@ describe("sessionPermissionRules", () => {
     expect(sessionPermissionRules({})).toEqual([
       { permission: "task", pattern: "*", action: "deny" },
       { permission: "task_done", pattern: "*", action: "allow" },
-      { permission: "task_blocked", pattern: "*", action: "allow" },
       { permission: "task_info", pattern: "*", action: "allow" },
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
@@ -120,7 +119,6 @@ describe("sessionPermissionRules", () => {
       { permission: "*", pattern: "*", action: "allow" },
       { permission: "task", pattern: "*", action: "deny" },
       { permission: "task_done", pattern: "*", action: "allow" },
-      { permission: "task_blocked", pattern: "*", action: "allow" },
       { permission: "task_info", pattern: "*", action: "allow" },
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
@@ -133,7 +131,6 @@ describe("sessionPermissionRules", () => {
       { permission: "*", pattern: "*", action: "deny" },
       { permission: "task", pattern: "*", action: "deny" },
       { permission: "task_done", pattern: "*", action: "allow" },
-      { permission: "task_blocked", pattern: "*", action: "allow" },
       { permission: "task_info", pattern: "*", action: "allow" },
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
@@ -145,7 +142,6 @@ describe("sessionPermissionRules", () => {
     expect(sessionPermissionRules({ permission: { task: "allow" } })).toEqual([
       { permission: "task", pattern: "*", action: "allow" },
       { permission: "task_done", pattern: "*", action: "allow" },
-      { permission: "task_blocked", pattern: "*", action: "allow" },
       { permission: "task_info", pattern: "*", action: "allow" },
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
@@ -157,7 +153,6 @@ describe("sessionPermissionRules", () => {
     expect(sessionPermissionRules({ permission: { task: "deny" } })).toEqual([
       { permission: "task", pattern: "*", action: "deny" },
       { permission: "task_done", pattern: "*", action: "allow" },
-      { permission: "task_blocked", pattern: "*", action: "allow" },
       { permission: "task_info", pattern: "*", action: "allow" },
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
@@ -169,7 +164,6 @@ describe("sessionPermissionRules", () => {
     expect(sessionPermissionRules({ permission: { task: { explore: "allow" } } })).toEqual([
       { permission: "task", pattern: "explore", action: "allow" },
       { permission: "task_done", pattern: "*", action: "allow" },
-      { permission: "task_blocked", pattern: "*", action: "allow" },
       { permission: "task_info", pattern: "*", action: "allow" },
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
@@ -524,4 +518,3 @@ describe("runTaskBySlug", () => {
     expect(content.endsWith("\n\n")).toBe(false)
   })
 })
-

@@ -38,7 +38,7 @@ export function taskPrompt(task: ChecklistTask, kind: PromptKind, linkedContext 
 Continue the task.
 Use the task_info tool to see the task.
 When done, use the task_done tool.
-If stuck, use the task_blocked tool and say why.`
+If stuck, use the task_done tool with a reason.`
   }
 
   const intro = kind === "recurring" ? "This task runs on a schedule. You did it before. Do it again now:" : "Do this task:"
@@ -57,7 +57,7 @@ Steps:
 3. Check the work.
 4. Use the task_done tool.
 
-If you cannot do the task, use the task_blocked tool and say why.
+If you cannot do the task, use the task_done tool with a reason.
 To see the task again, use the task_info tool.`
 }
 
@@ -191,7 +191,6 @@ export function sessionPermissionRules(
     ...(autoApprove ? autoApprovedRules(baseRuleset) : []),
     ...[...configured].sort(bySpecificity),
     { permission: "task_done", pattern: "*", action: "allow" },
-    { permission: "task_blocked", pattern: "*", action: "allow" },
     { permission: "task_info", pattern: "*", action: "allow" },
     { permission: "tasks_debug", pattern: "*", action: "deny" },
     { permission: "tasks_start", pattern: "*", action: "deny" },
