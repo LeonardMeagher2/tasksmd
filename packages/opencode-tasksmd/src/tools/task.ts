@@ -1,6 +1,33 @@
+import { existsSync, readFileSync } from "node:fs"
+import path from "node:path"
+
 import { tool } from "@opencode-ai/plugin"
 import { taskContext } from "@leonardmeagher2/tasksmd"
+import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
 import { slugForSession } from "../task-session"
+import { linkedTaskContextBlock } from "../worker/run"
+
+export function taskLocation(task: ChecklistTask): string {
+  return `Task location: TASKS.md:${task.line + 1}`
+}
+
+export function linkedTaskInfo(boardPath: string, task: ChecklistTask): string {
+  if (!task.link) return ""
+  const linkedPath = path.join(path.dirname(boardPath), task.link.path)
+  if (!existsSync(linkedPath)) return `Linked task file: ${task.link.path} (missing)`
+  try {
+    const content = readFileSync(linkedPath, "utf-8")
+    return `Linked task context:\n${linkedTaskContextBlock(task.link.path, content)}`
+  } catch {
+    return `Linked task file: ${task.link.path} (unreadable)`
+  }
+}
+
+export function taskInfoText(slug: string, boardPath: string, task: ChecklistTask): string {
+  const info = `# Task: ${slug}\nTask current status: ${task.state}\n${taskLocation(task)}\n\n${task.raw}`
+  const linked = linkedTaskInfo(boardPath, task)
+  return linked ? `${info}\n\n${linked}` : info
+}
 
 export function createTaskTools(directory: string) {
   return {
@@ -39,10 +66,10 @@ export function createTaskTools(directory: string) {
       async execute(_args, ctx) {
         const slug = slugForSession(directory, ctx.sessionID)
         if (!slug) return "This session is not linked to a task."
-        const task = taskContext(directory, slug).current()
+        const context = taskContext(directory, slug)
+        const task = context.current()
         if (!task) return `Task "${slug}" was not found on the board.`
-        const info = `# Task: ${slug}\nTask current status: ${task.state}\n\n${task.raw}`
-        return task.link ? `${info}\n\nLinked file: ${task.link.path}` : info
+        return taskInfoText(slug, context.boardPath, task)
       },
     }),
   }
