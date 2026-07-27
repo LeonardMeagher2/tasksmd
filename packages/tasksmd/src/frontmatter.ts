@@ -6,7 +6,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml"
  * Returns an empty object when there is no frontmatter or it is not a mapping.
  * tasksmd assigns no meaning to the keys — consumers define their own schema.
  */
-export function frontmatter(content: string): Record<string, unknown> {
+export function parseFrontmatter(content: string): Record<string, unknown> {
   try {
     const parts = content.split(/^---\s*$/m)
     if (parts.length < 3) return {}

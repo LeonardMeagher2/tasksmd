@@ -1,13 +1,13 @@
 import { describe, expect, test } from "bun:test"
-import { frontmatter, mergeFrontmatter, serializeFrontmatter, stripFrontmatter } from "./frontmatter"
+import { mergeFrontmatter, parseFrontmatter, serializeFrontmatter, stripFrontmatter } from "./frontmatter"
 
-describe("frontmatter", () => {
+describe("parseFrontmatter", () => {
   test("parses simple frontmatter", () => {
     const content = `---
 every: 5 minutes
 model: ollama/foo
 ---`
-    expect(frontmatter(content)).toEqual({
+    expect(parseFrontmatter(content)).toEqual({
       every: "5 minutes",
       model: "ollama/foo",
     })
@@ -17,7 +17,7 @@ model: ollama/foo
     const content = `---
 max_active: 3
 ---`
-    expect(frontmatter(content)).toEqual({ max_active: 3 })
+    expect(parseFrontmatter(content)).toEqual({ max_active: 3 })
   })
 
   test("parses boolean values", () => {
@@ -25,7 +25,7 @@ max_active: 3
 enabled: true
 disabled: false
 ---`
-    expect(frontmatter(content)).toEqual({ enabled: true, disabled: false })
+    expect(parseFrontmatter(content)).toEqual({ enabled: true, disabled: false })
   })
 
   test("parses nested object", () => {
@@ -34,20 +34,20 @@ permission:
   bash: deny
   read: allow
 ---`
-    expect(frontmatter(content)).toEqual({
+    expect(parseFrontmatter(content)).toEqual({
       permission: { bash: "deny", read: "allow" },
     })
   })
 
   test("returns empty object when no frontmatter", () => {
-    expect(frontmatter("no frontmatter here")).toEqual({})
+    expect(parseFrontmatter("no frontmatter here")).toEqual({})
   })
 
   test("handles quoted strings", () => {
     const content = `---
 title: "hello world"
 ---`
-    expect(frontmatter(content)).toEqual({ title: "hello world" })
+    expect(parseFrontmatter(content)).toEqual({ title: "hello world" })
   })
 
   test("ignores comment lines", () => {
@@ -55,18 +55,18 @@ title: "hello world"
 # this is a comment
 key: value
 ---`
-    expect(frontmatter(content)).toEqual({ key: "value" })
+    expect(parseFrontmatter(content)).toEqual({ key: "value" })
   })
 
   test("values with colons are preserved", () => {
     const content = `---
 model: ollama/unsloth/Qwen3.5-9B-GGUF:Q4_K_M
 ---`
-    expect(frontmatter(content).model).toBe("ollama/unsloth/Qwen3.5-9B-GGUF:Q4_K_M")
+    expect(parseFrontmatter(content).model).toBe("ollama/unsloth/Qwen3.5-9B-GGUF:Q4_K_M")
   })
 
   test("empty frontmatter returns empty object", () => {
-    expect(frontmatter(`---
+    expect(parseFrontmatter(`---
 ---`)).toEqual({})
   })
 
@@ -74,7 +74,7 @@ model: ollama/unsloth/Qwen3.5-9B-GGUF:Q4_K_M
     const content = `---
 key:
 ---`
-    expect(frontmatter(content)).toEqual({ key: null })
+    expect(parseFrontmatter(content)).toEqual({ key: null })
   })
 
   test("quoted keys are unquoted", () => {
@@ -83,7 +83,7 @@ permission:
   bash:
     "*.exe": deny
 ---`
-    expect(frontmatter(content)).toEqual({
+    expect(parseFrontmatter(content)).toEqual({
       permission: { bash: { "*.exe": "deny" } },
     })
   })
@@ -97,7 +97,7 @@ limits:
   cpu: 2
   memory: 512
 ---`
-    expect(frontmatter(content)).toEqual({
+    expect(parseFrontmatter(content)).toEqual({
       permission: { bash: "deny", read: "allow" },
       limits: { cpu: 2, memory: 512 },
     })
@@ -110,7 +110,7 @@ permission:
   bash: deny
 max_active: 3
 ---`
-    expect(frontmatter(content)).toEqual({
+    expect(parseFrontmatter(content)).toEqual({
       every: "5 minutes",
       permission: { bash: "deny" },
       max_active: 3,
@@ -122,7 +122,7 @@ max_active: 3
 key: value
 ---
 This should not be parsed as YAML: true`
-    expect(frontmatter(content)).toEqual({ key: "value" })
+    expect(parseFrontmatter(content)).toEqual({ key: "value" })
   })
 
   test("multiple documents (only first frontmatter)", () => {
@@ -132,7 +132,7 @@ a: 1
 ---
 b: 2
 ---`
-    expect(frontmatter(content)).toEqual({ a: 1 })
+    expect(parseFrontmatter(content)).toEqual({ a: 1 })
   })
 })
 
@@ -156,7 +156,7 @@ describe("mergeFrontmatter", () => {
 describe("serializeFrontmatter", () => {
   test("round-trips nested values", () => {
     const content = serializeFrontmatter({ every: "5 minutes", permission: { bash: "deny" } })
-    expect(frontmatter(content)).toEqual({ every: "5 minutes", permission: { bash: "deny" } })
+    expect(parseFrontmatter(content)).toEqual({ every: "5 minutes", permission: { bash: "deny" } })
   })
 })
 

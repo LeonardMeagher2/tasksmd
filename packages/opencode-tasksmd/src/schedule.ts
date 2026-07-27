@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 
-import { frontmatter } from "@leonardmeagher2/tasksmd"
+import { parseFrontmatter } from "@leonardmeagher2/tasksmd"
 import type { Checklist } from "@leonardmeagher2/tasksmd"
 import { parseEvery } from "./config"
 import type { ProjectState } from "./state"
@@ -14,7 +14,7 @@ export function taskSchedules(directory: string, parsed: Checklist): Record<stri
     if (!task.link) continue
     const linkedFile = path.join(directory, task.link.path)
     if (!existsSync(linkedFile)) continue
-    const interval = parseEvery(frontmatter(readFileSync(linkedFile, "utf-8")).every, 0)
+    const interval = parseEvery(parseFrontmatter(readFileSync(linkedFile, "utf-8")).every, 0)
     if (interval > 0) result[task.slug] = interval
   }
 

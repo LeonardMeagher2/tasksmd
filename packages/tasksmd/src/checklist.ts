@@ -1,4 +1,4 @@
-import { frontmatter, serializeFrontmatter } from "./frontmatter"
+import { parseFrontmatter, serializeFrontmatter } from "./frontmatter"
 
 export type TaskState = "pending" | "active" | "done" | "blocked"
 
@@ -97,7 +97,7 @@ function buildTree(tasks: ChecklistTask[]): ChecklistTask[] {
 export function parseChecklist(content: string): Checklist {
   const lines = content.split(/\r?\n/)
 
-  const matter = frontmatter(content)
+  const matter = parseFrontmatter(content)
   let bodyStart = 0
 
   if (lines.length > 0 && lines[0].trim() === "---") {
