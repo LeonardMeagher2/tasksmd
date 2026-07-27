@@ -5,6 +5,9 @@ This repo contains two packages for `TASKS.md` task boards.
 - `packages/tasksmd` is the Markdown board library.
 - `packages/opencode-tasksmd` is the OpenCode plugin that runs tasks in the background.
 
+Note: `opencode-tasksmd` does not run tasks on its own. Call `tasks_start` in
+OpenCode to turn on background work for the current session.
+
 ## Setup
 
 Install dependencies once:
