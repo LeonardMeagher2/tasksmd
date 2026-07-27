@@ -126,7 +126,7 @@ removeTask(markdown, "task-slug") // updated markdown, or undefined
 
 ```ts
 import {
-  frontmatter,      // parse the YAML frontmatter of any Markdown string
+  parseFrontmatter, // parse the YAML frontmatter of any Markdown string
   stripFrontmatter, // the Markdown string with its frontmatter block removed
   mergeFrontmatter, // merge two frontmatter records; the second one's values win
 } from "@leonardmeagher2/tasksmd"

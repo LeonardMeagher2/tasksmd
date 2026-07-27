@@ -14,7 +14,7 @@ export type {
 } from "./checklist"
 
 export {
-  frontmatter,
+  parseFrontmatter,
   mergeFrontmatter,
   serializeFrontmatter,
   stripFrontmatter,
