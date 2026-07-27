@@ -34,9 +34,11 @@ async function toastNewBlocked(client: PluginClient, directory: string): Promise
     const parsed = parseChecklist(readFileSync(boardPath(directory), "utf-8"))
     const blocked = new Set(parsed.roots.filter((t) => t.state === "blocked").map((t) => t.slug))
     const previous = blockedCache.get(directory) ?? new Set<string>()
+    const state = readState(directory)
     for (const slug of blocked) {
       if (!previous.has(slug)) {
-        await showToast(client, `Task blocked: ${slug}`, "warning", "tasksmd")
+        const reason = state.tasks[slug]?.blocked_reason
+        await showToast(client, reason ? `Task blocked: ${slug} — ${reason}` : `Task blocked: ${slug}`, "warning", "tasksmd")
       }
     }
     blockedCache.set(directory, blocked)

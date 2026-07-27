@@ -5,13 +5,16 @@ import { afterEach, describe, expect, test } from "bun:test"
 
 import { parseChecklist } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
-import { addTaskSession } from "../state"
+import { addTaskSession, readState, stateFile, updateTask } from "../state"
 import { createTaskTools, linkedTaskInfo, taskInfoText } from "./task"
 
 const dirs: string[] = []
 
 afterEach(() => {
-  for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true })
+  for (const dir of dirs.splice(0)) {
+    rmSync(stateFile(dir), { force: true })
+    rmSync(dir, { recursive: true, force: true })
+  }
 })
 
 function linkedTask(overrides: Partial<ChecklistTask> = {}): ChecklistTask {
@@ -85,17 +88,32 @@ describe("task_done", () => {
     expect(task?.state).toBe("done")
   })
 
-  test("marks blocked when reason is provided", async () => {
+  test("marks blocked when blocked_reason is provided, and keeps the reason in state", async () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "tasksmd-task-tool-"))
     dirs.push(dir)
     writeFileSync(path.join(dir, "TASKS.md"), "- [ ] Ship it\n")
     addTaskSession(dir, "ship-it", "session-1")
 
     const tools = createTaskTools(dir)
-    const result = await tools.task_done.execute({ reason: "Waiting on API key" }, { sessionID: "session-1" } as any)
+    const result = await tools.task_done.execute({ blocked_reason: "Waiting on API key" }, { sessionID: "session-1" } as any)
     const task = parseChecklist(readFileSync(path.join(dir, "TASKS.md"), "utf-8")).tasks[0]
 
     expect(result).toBe('Task "ship-it" marked blocked: Waiting on API key')
     expect(task?.state).toBe("blocked")
+    expect(readState(dir).tasks["ship-it"]?.blocked_reason).toBe("Waiting on API key")
+  })
+
+  test("marking done clears a stored blocked reason", async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "tasksmd-task-tool-"))
+    dirs.push(dir)
+    writeFileSync(path.join(dir, "TASKS.md"), "- [!] Ship it\n")
+    addTaskSession(dir, "ship-it", "session-1")
+    updateTask(dir, "ship-it", { blocked_reason: "Waiting on API key" })
+
+    const tools = createTaskTools(dir)
+    const result = await tools.task_done.execute({}, { sessionID: "session-1" } as any)
+
+    expect(result).toBe('Task "ship-it" marked done.')
+    expect(readState(dir).tasks["ship-it"]?.blocked_reason).toBeUndefined()
   })
 })
