@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
-import { parseChecklist, replaceTask } from "@leonardmeagher2/tasksmd"
+import { parseChecklist, replaceTask, stripFrontmatter } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
 import { modelValue, permissionRules, taskPermissions, withDefaultTaskDeny } from "../config"
 import { scheduleDue, taskSchedules } from "../schedule"
@@ -25,8 +25,11 @@ export const LINKED_TASK_BODY_LIMIT = 6000
 /** How much of a failure message is kept in the task's run record. */
 export const OUTPUT_LIMIT = 2000
 
+// A linked file's frontmatter is config, already merged into the run via
+// `loadTaskConfig` — injecting it into prompts is noise the agent can mistake
+// for instructions, so it is stripped here.
 export function linkedTaskContextBlock(linkPath: string, body: string, limit = LINKED_TASK_BODY_LIMIT): string {
-  const trimmed = body.trim()
+  const trimmed = stripFrontmatter(body).trim()
   if (!trimmed) return `Linked task file: ${linkPath}\n\n(Linked task file is empty)`
   if (trimmed.length <= limit) return `Linked task file: ${linkPath}\n\n${trimmed}`
   return `Linked task file: ${linkPath}\n\n${trimmed.slice(0, limit)}\n\n[Linked task content truncated to ${limit} characters. Read the full linked file before making changes.]`
