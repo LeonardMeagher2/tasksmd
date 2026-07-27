@@ -17,6 +17,7 @@ export {
   frontmatter,
   mergeFrontmatter,
   serializeFrontmatter,
+  stripFrontmatter,
 } from "./frontmatter"
 
 export {

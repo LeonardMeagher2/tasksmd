@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { frontmatter, mergeFrontmatter, serializeFrontmatter } from "./frontmatter"
+import { frontmatter, mergeFrontmatter, serializeFrontmatter, stripFrontmatter } from "./frontmatter"
 
 describe("frontmatter", () => {
   test("parses simple frontmatter", () => {
@@ -157,5 +157,27 @@ describe("serializeFrontmatter", () => {
   test("round-trips nested values", () => {
     const content = serializeFrontmatter({ every: "5 minutes", permission: { bash: "deny" } })
     expect(frontmatter(content)).toEqual({ every: "5 minutes", permission: { bash: "deny" } })
+  })
+})
+
+describe("stripFrontmatter", () => {
+  test("removes a leading frontmatter block", () => {
+    expect(stripFrontmatter("---\nevery: 1 hour\n---\n\n# Goal\n")).toBe("\n# Goal\n")
+  })
+
+  test("handles CRLF frontmatter, normalizing to LF like replaceTask", () => {
+    expect(stripFrontmatter("---\r\nevery: 1 hour\r\n---\r\n# Goal\r\n")).toBe("# Goal\n")
+  })
+
+  test("empty frontmatter block leaves the body", () => {
+    expect(stripFrontmatter("---\n---\n# Goal")).toBe("# Goal")
+  })
+
+  test("leaves content without frontmatter alone", () => {
+    expect(stripFrontmatter("# Goal\nShip it")).toBe("# Goal\nShip it")
+  })
+
+  test("leaves unclosed frontmatter alone", () => {
+    expect(stripFrontmatter("---\nevery: 1 hour\n# Goal")).toBe("---\nevery: 1 hour\n# Goal")
   })
 })

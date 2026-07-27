@@ -23,6 +23,19 @@ export function mergeFrontmatter(base: Record<string, unknown>, override: Record
   return deepmerge(base, override)
 }
 
+/**
+ * The document body with its leading YAML frontmatter block removed.
+ * Returns the content unchanged when there is no frontmatter block, or the
+ * block is never closed.
+ */
+export function stripFrontmatter(content: string): string {
+  const lines = content.split(/\r?\n/)
+  if (lines[0]?.trim() !== "---") return content
+  const end = lines.findIndex((line, i) => i > 0 && line.trim() === "---")
+  if (end === -1) return content
+  return lines.slice(end + 1).join("\n")
+}
+
 /** Serialize a frontmatter mapping into a complete YAML frontmatter block. */
 export function serializeFrontmatter(values: Record<string, unknown> = {}): string {
   if (Object.keys(values).length === 0) return "---\n---\n"

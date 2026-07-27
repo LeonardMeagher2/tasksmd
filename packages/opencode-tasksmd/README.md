@@ -37,8 +37,9 @@ For a larger task, link to a file anywhere in the project:
 ```
 
 The linked file can include background, details, and acceptance criteria.
-On a task's first run, the worker includes linked file content in the initial
-prompt (truncated for size) and still tells the agent to read the full file.
+On a task's first run, the worker includes the linked file's content in the
+initial prompt (without its frontmatter, truncated for size) and still tells
+the agent to read the full file.
 
 Indented subtasks stay under their parent task.
 
@@ -183,7 +184,7 @@ For the agent running a task:
 - `task_done`: finish the task. With no reason it marks the task done; with a
   reason it marks the task blocked.
 - `task_info`: show the task — its text, its line in `TASKS.md`, and the
-  linked file's content.
+  linked file's content (without its frontmatter).
 
 ## Bundled Skill
 

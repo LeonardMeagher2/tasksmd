@@ -92,6 +92,17 @@ describe("linkedTaskContextBlock", () => {
     const context = linkedTaskContextBlock("docs/task.md", "a".repeat(LINKED_TASK_BODY_LIMIT + 20))
     expect(context).toContain("truncated")
   })
+
+  test("does not inject the linked file's frontmatter", () => {
+    const context = linkedTaskContextBlock("docs/task.md", "---\nevery: 1 hour\n---\n\n# Goal\nShip it")
+    expect(context).toContain("# Goal")
+    expect(context).not.toContain("every")
+  })
+
+  test("treats a frontmatter-only file as empty", () => {
+    const context = linkedTaskContextBlock("docs/task.md", "---\nevery: 1 hour\n---\n")
+    expect(context).toContain("(Linked task file is empty)")
+  })
 })
 
 describe("sessionIsBusy", () => {
