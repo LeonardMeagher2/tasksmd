@@ -32,31 +32,25 @@ export function taskInfoText(slug: string, boardPath: string, task: ChecklistTas
 export function createTaskTools(directory: string) {
   return {
     task_done: tool({
-      description: "Mark your task as done on the board. Call this once, after the work is complete and you have verified the result.",
-      args: {},
-      async execute(_args, ctx) {
-        const slug = slugForSession(directory, ctx.sessionID)
-        if (!slug) return "This session is not linked to a task."
-        return taskContext(directory, slug).markDone()
-          ? `Task "${slug}" marked done.`
-          : `Task "${slug}" was not found on the board.`
-      },
-    }),
-
-    task_blocked: tool({
-      description: "Mark your task as blocked on the board when you cannot finish it. Give the reason so a person can unblock it.",
+      description: "Finish your task. If you include a reason, the task is marked blocked with that reason instead of done.",
       args: {
-        reason: tool.schema.string().optional().describe("Why the task is blocked"),
+        reason: tool.schema.string().optional().describe("Why the task is blocked. Leave empty when the task is done."),
       },
       async execute(args, ctx) {
         const slug = slugForSession(directory, ctx.sessionID)
         if (!slug) return "This session is not linked to a task."
-        if (!taskContext(directory, slug).markBlocked()) {
+        const context = taskContext(directory, slug)
+        const reason = args.reason?.trim() ?? ""
+        if (reason) {
+          if (!context.markBlocked()) {
+            return `Task "${slug}" was not found on the board.`
+          }
+          return `Task "${slug}" marked blocked: ${reason}`
+        }
+        if (!context.markDone()) {
           return `Task "${slug}" was not found on the board.`
         }
-        return args.reason
-          ? `Task "${slug}" marked blocked: ${args.reason}`
-          : `Task "${slug}" marked blocked.`
+        return `Task "${slug}" marked done.`
       },
     }),
 

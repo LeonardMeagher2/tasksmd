@@ -1,10 +1,12 @@
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
 
+import { parseChecklist } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
-import { linkedTaskInfo, taskInfoText } from "./task"
+import { addTaskSession } from "../state"
+import { createTaskTools, linkedTaskInfo, taskInfoText } from "./task"
 
 const dirs: string[] = []
 
@@ -65,5 +67,35 @@ describe("linkedTaskInfo", () => {
       }),
     )
     expect(info).toBe("Linked task file: docs (unreadable)")
+  })
+})
+
+describe("task_done", () => {
+  test("marks done when reason is empty", async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "tasksmd-task-tool-"))
+    dirs.push(dir)
+    writeFileSync(path.join(dir, "TASKS.md"), "- [ ] Ship it\n")
+    addTaskSession(dir, "ship-it", "session-1")
+
+    const tools = createTaskTools(dir)
+    const result = await tools.task_done.execute({}, { sessionID: "session-1" } as any)
+    const task = parseChecklist(readFileSync(path.join(dir, "TASKS.md"), "utf-8")).tasks[0]
+
+    expect(result).toBe('Task "ship-it" marked done.')
+    expect(task?.state).toBe("done")
+  })
+
+  test("marks blocked when reason is provided", async () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "tasksmd-task-tool-"))
+    dirs.push(dir)
+    writeFileSync(path.join(dir, "TASKS.md"), "- [ ] Ship it\n")
+    addTaskSession(dir, "ship-it", "session-1")
+
+    const tools = createTaskTools(dir)
+    const result = await tools.task_done.execute({ reason: "Waiting on API key" }, { sessionID: "session-1" } as any)
+    const task = parseChecklist(readFileSync(path.join(dir, "TASKS.md"), "utf-8")).tasks[0]
+
+    expect(result).toBe('Task "ship-it" marked blocked: Waiting on API key')
+    expect(task?.state).toBe("blocked")
   })
 })
