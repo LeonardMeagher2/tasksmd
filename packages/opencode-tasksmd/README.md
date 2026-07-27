@@ -1,11 +1,12 @@
 # OpenCode Tasks
 
 OpenCode Tasks adds a simple background work queue to your OpenCode project.
-Add work to `TASKS.md`, and OpenCode works through it in the background.
+Add work to `TASKS.md`, then call `tasks_start`. While background work is on,
+OpenCode works through your tasks in the background.
 
 ## What It Does
 
-- Lets OpenCode pick up pending tasks automatically.
+- Lets OpenCode pick up waiting tasks automatically once background work is on.
 - Shows task progress in `TASKS.md`.
 - Lets unfinished work continue instead of starting over.
 - Limits how many tasks run at once.
@@ -50,9 +51,10 @@ Indented subtasks stay under their parent task.
 [!]  Blocked
 ```
 
-OpenCode marks work in progress. The task agent marks work done with
-`task_done` after checking the result. If it calls `task_done` with a reason,
-the task is marked blocked.
+OpenCode marks a task as in progress when it starts. The agent working on the
+task calls `task_done` after checking its result — with no reason to mark the
+task done, or with a reason to mark it blocked. The agent can call `task_info`
+at any time to re-read its task.
 
 ## Order of Work
 
@@ -63,8 +65,8 @@ first task it can run right now:
 - a task in progress is continued;
 - a waiting task starts.
 
-A task whose session is still working is passed over, not waited on, and the
-check moves down the board. Blocked tasks are left alone.
+A task that is still running is skipped rather than waited on, and the check
+moves down the board. Blocked tasks are left alone.
 
 Position decides order, so a recurring task at the top of the board runs before
 the work below it. Being due does not let it jump ahead of a task above it.
@@ -87,39 +89,40 @@ permission:
 ---
 ```
 
-`every` sets a repeat schedule. On the board, it checks for work at that
-interval. In a linked task file, it runs that task again on the interval, timed
-from the last run, so a restart does not lose the schedule and a missed interval
-is picked up on the next check rather than skipped. Use `false` or `0` to
-disable it. Examples: `5 minutes`, `1h`, `3600`, `false`.
+`every` sets a repeat schedule. On the board, it tells OpenCode to check for
+work at that interval. In a linked task file, it re-runs that one task at the
+interval, counted from the task's last run — so a restart does not lose the
+schedule, and a missed interval is picked up on the next check rather than
+skipped. Use `false` or `0` to disable it. Examples: `5 minutes`, `1h`,
+`3600`, `false`.
 
-`model` sets the default model.
+`model` sets the default model for task runs.
 
-`agent` sets which OpenCode agent runs tasks. By default, tasks use your main
-agent.
+`agent` sets which OpenCode agent runs tasks. If not set, tasks use the `build`
+agent when it exists, otherwise your main agent.
 
-`max_active` limits how many task sessions work at once, recurring tasks
+`max_active` limits how many tasks run at the same time, recurring tasks
 included. While every slot is taken, nothing new starts. Use `false` or `0` to
 work without a limit.
 
-A task left marked `[~]` whose session has gone idle does not hold a slot — the
+A task left marked `[~]` that is no longer running does not hold a slot — the
 marker says a task was started, not that anything is happening.
 
-`auto_approve` lets a task run without stopping to ask. It answers yes to every
-permission request the task would otherwise have to wait on, and leaves `deny`
-rules refusing. Only the task's session is affected; your own sessions are
+`auto_approve` lets a task run without stopping to ask you. Every permission
+request it would otherwise wait on is answered yes; anything already denied
+stays denied. Only the task's session is affected — your other sessions are
 untouched.
 
-It works from the permissions already in effect for the agent — OpenCode's
-defaults, the agent's own rules, and your `opencode.json` — and re-applies them
-to the task's session with `ask` changed to `allow`. Anything you have denied
-stays denied. In practice this covers reaching outside the project directory,
-reading `.env` files, and anything your own config marks `ask`.
+The plugin takes the permission rules already in effect for that agent —
+OpenCode's defaults, the agent's own rules, and your `opencode.json` — and
+applies them to the task's session with every `ask` changed to `allow`. In
+practice this covers reaching outside the project directory, reading `.env`
+files, and anything your own config marks `ask`.
 
 `permission` controls what the task may do: `allow`, `ask`, or `deny`.
-Use it for all tool access, including patterns such as `bash: deny`.
-This plugin writes those rules onto the session before it starts prompting, so
-only the task's session is affected here too.
+It covers all tool access, including command patterns such as `bash: deny`.
+The rules are set on the task's session before it starts, so only that session
+is affected.
 
 A narrower rule always beats a broader one, whatever order they appear in, so
 `permission` still applies on top of `auto_approve`:
@@ -136,22 +139,51 @@ permission:
 
 That task runs unattended, but `bash` is refused except for `git` commands.
 
-Sub-agent spawning (the `task` permission) defaults to `deny` for task sessions
-and stays denied under `auto_approve`. Set `permission: { task: allow }` or a
-per-agent glob like `task: { explore: "allow" }` to opt in.
+Letting a task spawn sub-agents (the `task` permission) is denied by default
+and stays denied under `auto_approve`. To opt in, set
+`permission: { task: allow }`, or allow only specific agents, for example
+`task: { explore: "allow" }`.
+
+Task sessions always:
+
+- may call `task_done` and `task_info`;
+- may not call `tasks_start`, `tasks_stop`, or `tasks_debug`.
+
+These rules are applied last, so a board cannot override them: a task can
+report its own status, but it cannot control the scheduler.
 
 ### Linked Task Files
 
-Linked task files can override the model and agent, and can use stricter
-permissions for that task.
+Settings in a linked task file override the board's defaults for that task. A
+linked file can set `every`, `model`, `agent`, `auto_approve`, and
+`permission`.
 
 ## Sessions
 
-Task scheduling is runtime-only. It is off when OpenCode starts, and it stops
-when OpenCode closes.
+Background work only runs while OpenCode is open. It is off when OpenCode
+starts, and it stops when OpenCode closes.
 
-Use `tasks_start` to enable schedulers for the current runtime, and `tasks_stop`
-to disable them.
+Use `tasks_start` to turn background work on, and `tasks_stop` to turn it off.
+
+## Tools
+
+The plugin gives OpenCode agents these tools.
+
+For your own sessions:
+
+- `tasks_start`: turn on background work for this session, then start any
+  waiting tasks.
+- `tasks_stop`: turn background work off for this session.
+- `tasks_debug`: show a diagnostic report — board summary, saved run state,
+  scheduler status, connection to OpenCode, the next waiting task, and recent
+  worker log lines.
+
+For the agent running a task:
+
+- `task_done`: finish the task. With no reason it marks the task done; with a
+  reason it marks the task blocked.
+- `task_info`: show the task — its text, its line in `TASKS.md`, and the
+  linked file's content.
 
 ## Bundled Skill
 
@@ -162,14 +194,8 @@ This plugin ships a default skill at:
 On startup, the plugin installs that file if it is missing. It does not
 overwrite existing workspace edits.
 
-The skill focuses on tool-agnostic `TASKS.md` format and a safe start workflow
-for task sessions. For exact OpenCode config field shapes, use:
+The skill explains the `TASKS.md` format — which works the same with any tool —
+and a safe workflow for task sessions. For the exact OpenCode config format,
+see:
 
 - https://opencode.ai/config.json
-
-## Controls
-
-Your agent can use `tasks_start` to enable runtime schedulers and run pending
-work now.
-
-Or `tasks_stop` to stop runtime scheduling for this OpenCode session.
