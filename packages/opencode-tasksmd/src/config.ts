@@ -71,3 +71,35 @@ export function modelValue(value: string): { providerID: string; modelID: string
   if (separator <= 0) return undefined
   return { providerID: value.slice(0, separator), modelID: value.slice(separator + 1) }
 }
+
+export type WorktreeConfig = {
+  enabled: boolean
+  /** Panic threshold: consecutive change-free runs before the session is dropped. 0 disables panic. */
+  attempts: number
+  autoMerge: boolean
+}
+
+const WORKTREE_DEFAULTS = { attempts: 3, autoMerge: true }
+
+/**
+ * Parse the `worktree` value. `true` enables with defaults; an object enables
+ * with overrides (`attempts`, `auto_merge`); `false`/`0`/anything invalid
+ * disables — a typo must not silently start writing worktrees.
+ */
+export function parseWorktree(value: unknown): WorktreeConfig {
+  const disabled: WorktreeConfig = { enabled: false, attempts: 0, autoMerge: WORKTREE_DEFAULTS.autoMerge }
+  if (value === true) return { enabled: true, ...WORKTREE_DEFAULTS }
+  if (!value || typeof value !== "object" || Array.isArray(value)) return disabled
+
+  const data = value as Record<string, unknown>
+  const raw = data.attempts
+  const truncated = Math.trunc(Number(raw))
+  const attempts =
+    raw === false || raw === 0 || raw === "0"
+      ? 0
+      : Number.isFinite(truncated) && truncated > 0
+        ? truncated
+        : WORKTREE_DEFAULTS.attempts
+  const autoMerge = typeof data.auto_merge === "boolean" ? data.auto_merge : WORKTREE_DEFAULTS.autoMerge
+  return { enabled: true, attempts, autoMerge }
+}
