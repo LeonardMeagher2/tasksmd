@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test"
-import { parseEvery, parseMaxActive, taskPermissions, permissionRules, modelValue, withDefaultTaskDeny } from "./config"
+import { parseEvery, parseMaxActive, parseWorktree, taskPermissions, permissionRules, modelValue, withDefaultTaskDeny } from "./config"
 
 describe("parseEvery", () => {
   test("returns 0 for false", () => {
@@ -175,5 +175,38 @@ describe("modelValue", () => {
       providerID: "ollama",
       modelID: "unsloth/Qwen3.5-9B-GGUF:Q4_K_M",
     })
+  })
+})
+
+describe("parseWorktree", () => {
+  test("disabled by default and for false, 0, and junk", () => {
+    expect(parseWorktree(undefined).enabled).toBe(false)
+    expect(parseWorktree(false).enabled).toBe(false)
+    expect(parseWorktree(0).enabled).toBe(false)
+    expect(parseWorktree("yes").enabled).toBe(false)
+    expect(parseWorktree([]).enabled).toBe(false)
+  })
+
+  test("true enables with defaults", () => {
+    expect(parseWorktree(true)).toEqual({ enabled: true, attempts: 3, autoMerge: true })
+  })
+
+  test("an empty object enables with defaults", () => {
+    expect(parseWorktree({})).toEqual({ enabled: true, attempts: 3, autoMerge: true })
+  })
+
+  test("an object overrides the defaults", () => {
+    expect(parseWorktree({ attempts: 5, auto_merge: false })).toEqual({ enabled: true, attempts: 5, autoMerge: false })
+  })
+
+  test("attempts false or 0 disables only the panic", () => {
+    expect(parseWorktree({ attempts: false })).toEqual({ enabled: true, attempts: 0, autoMerge: true })
+    expect(parseWorktree({ attempts: 0 }).attempts).toBe(0)
+    expect(parseWorktree({ attempts: "0" }).attempts).toBe(0)
+  })
+
+  test("a bad attempts value falls back to the default", () => {
+    expect(parseWorktree({ attempts: "plenty" }).attempts).toBe(3)
+    expect(parseWorktree({ attempts: -2 }).attempts).toBe(3)
   })
 })

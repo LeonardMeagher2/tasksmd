@@ -156,6 +156,33 @@ describe("findTask", () => {
     expect(selected).toBeUndefined()
   })
 
+  test("a busy worktree session counts via its own directory's statuses", async () => {
+    const dir = tempProject()
+    const worktreeDir = path.join(dir, ".opencode", "tasks", "worktrees", "first")
+    const parsed = parseChecklist("- [ ] First\n- [ ] Second\n")
+    updateTask(dir, "first", { session_id: "ses_wt", worktree: worktreeDir })
+
+    // The session reports busy only under the worktree's directory, never the root's.
+    const worktreeBusy: PluginClient = {
+      tui: { showToast: async () => ({}) },
+      app: { agents: async () => ({ data: [] }) },
+      session: {
+        get: async () => ({}),
+        create: async () => ({}),
+        update: async () => ({}),
+        status: async (params: unknown) => {
+          const query = (params as { query?: { directory?: string } }).query
+          const data: Record<string, SessionStatus> = query?.directory === worktreeDir ? { ses_wt: { type: "running" } } : {}
+          return { data }
+        },
+        promptAsync: async () => ({}),
+      },
+    }
+
+    expect(await findTask(dir, parsed, worktreeBusy)).toBeUndefined()
+    expect((await findTask(dir, parsed, makeClient()))?.slug).toBe("first")
+  })
+
   test("a due recurring task waits while every slot is working", async () => {
     const dir = tempProject({ "checks/hourly.md": "---\nevery: 1 hour\n---\nreview\n" })
     const parsed = parseChecklist("- [ ] [Hourly review](checks/hourly.md)\n- [~] Build the thing\n")

@@ -3,11 +3,14 @@ import path from "node:path"
 
 import { parseChecklist, replaceTask, stripFrontmatter } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
-import { modelValue, permissionRules, taskPermissions, withDefaultTaskDeny } from "../config"
+import { modelValue, parseWorktree, permissionRules, taskPermissions, withDefaultTaskDeny } from "../config"
 import { scheduleDue, taskSchedules } from "../schedule"
 import { addTaskSession, readState, updateTask } from "../state"
+import type { TaskRunState } from "../state"
 import { latestSessionForTask } from "../task-session"
 import { loadTaskConfig } from "../task-config"
+import { ensureWorktree, isGitRepo } from "../worktree"
+import type { WorktreeInfo } from "../worktree"
 import type {
   AgentRecord,
   PermissionRule,
@@ -240,7 +243,8 @@ export function sessionIsBusy(status: SessionStatus | undefined): boolean {
 
 async function runAttached(
   client: PluginClient,
-  directory: string,
+  projectRoot: string,
+  sessionDir: string,
   slug: string,
   session: ResolvedSession,
   model: string,
@@ -251,30 +255,30 @@ async function runAttached(
   let baseRuleset: PermissionRule[] = []
   if (taskConfig.auto_approve) {
     try {
-      baseRuleset = await agentRuleset(client, directory, agent)
+      baseRuleset = await agentRuleset(client, sessionDir, agent)
     } catch (error) {
       // Better to run and let OpenCode ask than to fail the task outright.
-      log(directory, `task=${slug} auto_approve=unavailable reason=${error instanceof Error ? error.message : String(error)}`)
+      log(projectRoot, `task=${slug} auto_approve=unavailable reason=${error instanceof Error ? error.message : String(error)}`)
     }
   }
 
   const rules = sessionPermissionRules(taskConfig, baseRuleset)
-  const id = await prepareAttachedSession(client, directory, session, `task:${slug}`, rules)
+  const id = await prepareAttachedSession(client, sessionDir, session, `task:${slug}`, rules)
   if (!id) throw new Error("OpenCode did not return a session ID")
 
   // Persist session ownership immediately so retries reuse the same session
   // even if status/prompt calls fail afterward.
-  addTaskSession(directory, slug, id)
+  addTaskSession(projectRoot, slug, id)
 
   // Busy-check only applies when reusing an existing session. A newly created
   // session is by definition ours to prompt now, and skipping status avoids
   // creating empty sessions when status lookups transiently fail.
   if (id === session.id) {
-    const statuses = await sessionStatuses(client, directory)
+    const statuses = await sessionStatuses(client, sessionDir)
     const status = statuses.data?.[id]
     if (status?.type === "retry") throw new Error(`session retry failed: ${status.message}`)
     if (sessionIsBusy(status)) {
-      log(directory, `task=${slug} session=${id} status=${status?.type} action=skip`)
+      log(projectRoot, `task=${slug} session=${id} status=${status?.type} action=skip`)
       return { session: id, skipped: true }
     }
   }
@@ -282,7 +286,7 @@ async function runAttached(
   // The runtime continues the turn after promptAsync returns.
   const sent = await client.session.promptAsync({
     path: { id },
-    query: { directory },
+    query: { directory: sessionDir },
     body: {
       agent: agent || undefined,
       model: modelValue(model),
@@ -291,6 +295,37 @@ async function runAttached(
   })
   if (sent.error) throw new Error(JSON.stringify(sent.error))
   return { session: id, skipped: false }
+}
+
+/**
+ * Prepare the task's worktree when enabled, recording it in state so selection
+ * can find its session directory. Falls back to the project root when the
+ * feature is off, the project is not a git repo, or preparation fails.
+ */
+export function prepareTaskWorktree(
+  projectRoot: string,
+  slug: string,
+  taskConfig: Record<string, unknown>,
+  existing: TaskRunState | undefined,
+): WorktreeInfo | undefined {
+  const config = parseWorktree(taskConfig.worktree)
+  if (!config.enabled || !isGitRepo(projectRoot)) {
+    if (config.enabled) log(projectRoot, `task=${slug} worktree=disabled reason=not-a-git-repo`)
+    if (existing?.worktree) {
+      updateTask(projectRoot, slug, { worktree: undefined, branch: undefined, base: undefined, empty_attempts: undefined })
+    }
+    return undefined
+  }
+
+  const info = ensureWorktree(projectRoot, slug)
+  if (!info) {
+    log(projectRoot, `task=${slug} worktree=unavailable action=run-in-project-root`)
+    return undefined
+  }
+
+  const base = existing?.worktree === info.path && existing.base ? existing.base : info.base
+  updateTask(projectRoot, slug, { worktree: info.path, branch: info.branch, base })
+  return { ...info, base }
 }
 
 export async function runTask(
@@ -302,13 +337,18 @@ export async function runTask(
   recurring = false,
 ): Promise<void> {
   const projectRoot = resolveProjectRoot(directory)
-  const knownSession = readState(projectRoot).tasks[task.slug]?.session_id ?? ""
-  const resolved = await resolveTaskSession(client, projectRoot, session || knownSession)
-  await runResolvedTask(projectRoot, task, content, resolved, client, recurring)
+  const existing = readState(projectRoot).tasks[task.slug]
+  const taskConfig = loadTaskConfig(projectRoot, content, task)
+  const worktree = prepareTaskWorktree(projectRoot, task.slug, taskConfig, existing)
+  const sessionDir = worktree?.path ?? projectRoot
+  const resolved = await resolveTaskSession(client, sessionDir, session || existing?.session_id || "")
+  await runResolvedTask(projectRoot, sessionDir, worktree, task, content, resolved, client, recurring)
 }
 
 async function runResolvedTask(
   projectRoot: string,
+  sessionDir: string,
+  worktree: WorktreeInfo | undefined,
   task: ChecklistTask,
   content: string,
   session: ResolvedSession,
@@ -326,7 +366,7 @@ async function runResolvedTask(
       const fresh = readFileSync(tasksFile, "utf-8")
       const parsed = parseChecklist(fresh)
       const found = parsed.roots.find((t) => t.slug === task.slug)
-      if (found) await runResolvedTask(projectRoot, found, fresh, session, client, true)
+      if (found) await runResolvedTask(projectRoot, sessionDir, worktree, found, fresh, session, client, true)
       return
     }
   }
@@ -362,7 +402,7 @@ async function runResolvedTask(
   let sessionId = session.id
   let text = ""
   try {
-    const result = await runAttached(client, projectRoot, task.slug, session, model, agent, prompt, taskConfig)
+    const result = await runAttached(client, projectRoot, sessionDir, task.slug, session, model, agent, prompt, taskConfig)
     sessionId = result.session
     if (result.skipped) return
   } catch (error) {

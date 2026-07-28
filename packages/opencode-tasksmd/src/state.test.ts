@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
-import { readState, stateFile, logFile } from "./state"
+import { readState, stateFile, logFile, writeState } from "./state"
 
 describe("stateFile", () => {
   test("returns deterministic path for same directory", () => {
@@ -102,5 +102,55 @@ describe("logFile", () => {
   test("path contains opencode-tasks segment", () => {
     const result = logFile("/tmp/project")
     expect(result).toContain("opencode-tasks")
+  })
+})
+
+describe("state round-trip", () => {
+  const dirs: string[] = []
+
+  afterEach(() => {
+    while (dirs.length) {
+      const dir = dirs.pop()!
+      rmSync(stateFile(dir), { force: true })
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  test("worktree and panic fields survive a write and read", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "tasksmd-state-"))
+    dirs.push(dir)
+    writeState(dir, {
+      tasks: {
+        "ship-it": {
+          session_id: "ses_1",
+          blocked_reason: "waiting",
+          worktree: path.join(dir, ".opencode", "tasks", "worktrees", "ship-it"),
+          branch: "task/ship-it",
+          base: "main",
+          empty_attempts: 2,
+        },
+      },
+    })
+
+    expect(readState(dir).tasks["ship-it"]).toMatchObject({
+      session_id: "ses_1",
+      blocked_reason: "waiting",
+      branch: "task/ship-it",
+      base: "main",
+      empty_attempts: 2,
+    })
+    expect(readState(dir).tasks["ship-it"]?.worktree).toContain("ship-it")
+  })
+
+  test("unknown fields are dropped", () => {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "tasksmd-state-"))
+    dirs.push(dir)
+    mkdirSync(path.dirname(stateFile(dir)), { recursive: true })
+    writeFileSync(stateFile(dir), JSON.stringify({ tasks: { a: { worktree: 5, empty_attempts: "x", mystery: true } } }))
+
+    const run = readState(dir).tasks.a
+    expect(run?.worktree).toBeUndefined()
+    expect(run?.empty_attempts).toBeUndefined()
+    expect((run as Record<string, unknown> | undefined)?.mystery).toBeUndefined()
   })
 })

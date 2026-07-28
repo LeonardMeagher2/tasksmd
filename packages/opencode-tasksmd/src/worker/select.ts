@@ -35,16 +35,25 @@ export const DISPATCH_GRACE_MS = 10_000
  */
 export async function findTask(directory: string, parsed: Checklist, client: PluginClient): Promise<ChecklistTask | undefined> {
   const projectRoot = resolveProjectRoot(directory)
+  const tasks = readState(projectRoot).tasks
+
+  // A worktree session reports status under its own directory. Fetch each
+  // distinct one, or a busy worktree task looks idle and gets double-dispatched.
+  const dirs = new Set<string>([projectRoot])
+  for (const run of Object.values(tasks)) {
+    if (run.session_id && run.worktree) dirs.add(run.worktree)
+  }
   let statuses: Record<string, SessionStatus> = {}
-  try {
-    const response = await sessionStatuses(client, projectRoot)
-    statuses = response.data ?? {}
-  } catch {
-    // If statuses are unavailable, fall back to selecting by board/state only.
+  for (const dir of dirs) {
+    try {
+      const response = await sessionStatuses(client, dir)
+      statuses = { ...statuses, ...(response.data ?? {}) }
+    } catch {
+      // If statuses are unavailable, fall back to selecting by board/state only.
+    }
   }
 
   const schedules = taskSchedules(projectRoot, parsed)
-  const tasks = readState(projectRoot).tasks
   const now = Date.now()
 
   /** Working, or dispatched too recently for the runtime to say so yet. */
