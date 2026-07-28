@@ -9,7 +9,7 @@ import { readState, updateTask } from "../state"
 import { loadTaskConfig } from "../task-config"
 import { slugForSession } from "../task-session"
 import { resolveProjectRoot } from "../worker/common"
-import { linkedTaskContextBlock } from "../worker/run"
+import { linkedTaskContextBlock } from "../worker/prompt"
 import { commitAll, mergeWorktree, removeWorktree } from "../worktree"
 
 export function taskLocation(task: ChecklistTask): string {

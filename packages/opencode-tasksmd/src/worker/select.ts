@@ -4,7 +4,7 @@ import { scheduleDue, taskSchedules } from "../schedule"
 import { readState } from "../state"
 import type { PluginClient, SessionStatus } from "../types"
 import { resolveProjectRoot } from "./common"
-import { sessionIsBusy, sessionStatuses } from "./run"
+import { sessionIsBusy, sessionStatuses } from "./session"
 
 /**
  * How long a task holds its slot after being dispatched. The runtime does not
