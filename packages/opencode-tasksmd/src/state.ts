@@ -9,6 +9,12 @@ export type TaskRunState = {
   output?: string
   /** Why the task is blocked, as reported by the task session. */
   blocked_reason?: string
+  /** The task's git worktree, when worktrees are enabled. */
+  worktree?: string
+  branch?: string
+  base?: string
+  /** Consecutive runs that produced no changes; drives session panic. */
+  empty_attempts?: number
   /** When a run was last dispatched, successful or not. Drives recurring schedules. */
   last_run?: string
   last_completed?: string
@@ -93,6 +99,10 @@ export function readState(directory: string): ProjectState {
           exit_code: typeof record.exit_code === "number" ? record.exit_code : undefined,
           output: typeof record.output === "string" ? record.output : undefined,
           blocked_reason: typeof record.blocked_reason === "string" ? record.blocked_reason : undefined,
+          worktree: typeof record.worktree === "string" ? record.worktree : undefined,
+          branch: typeof record.branch === "string" ? record.branch : undefined,
+          base: typeof record.base === "string" ? record.base : undefined,
+          empty_attempts: typeof record.empty_attempts === "number" ? record.empty_attempts : undefined,
           last_run: typeof record.last_run === "string" ? record.last_run : undefined,
           last_completed: typeof record.last_completed === "string" ? record.last_completed : undefined,
         }] satisfies [string, TaskRunState]

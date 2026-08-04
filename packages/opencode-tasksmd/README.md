@@ -11,6 +11,7 @@ OpenCode works through your tasks in the background.
 - Lets unfinished work continue instead of starting over.
 - Limits how many tasks run at once.
 - Keeps blocked work visible without retrying it forever.
+- Can give each task its own git worktree and merge it back when done.
 
 ## Install
 
@@ -157,8 +158,58 @@ report its own status, but it cannot control the scheduler.
 ### Linked Task Files
 
 Settings in a linked task file override the board's defaults for that task. A
-linked file can set `every`, `model`, `agent`, `auto_approve`, and
-`permission`.
+linked file can set `every`, `model`, `agent`, `auto_approve`, `permission`,
+and `worktree`.
+
+## Worktrees
+
+Off by default. Turn it on to give each task its own git worktree — an
+isolated copy of the project on its own branch — so task work never touches
+your main checkout, and every finished task is a branch you can review.
+
+```md
+---
+worktree: true
+---
+```
+
+With the defaults, each task:
+
+- works in `.opencode/tasks/worktrees/<slug>` on the branch `task/<slug>`,
+- is committed and merged back into your current branch when the agent calls
+  `task_done`,
+- and gets a fresh session after 3 runs in a row that produce no changes
+  (the panic guard, for sessions that hang without doing anything).
+
+The worktree directory is hidden from git status through `.git/info/exclude`,
+so nothing is added to your repo's tracked files.
+
+Use the object form to change the defaults:
+
+```md
+---
+worktree:
+  attempts: 5        # change-free runs before the session is dropped (false disables)
+  auto_merge: false  # keep the branch for you to merge instead
+---
+```
+
+If the merge fails — a conflict, a dirty main checkout, or you switched
+branches while the task ran — the task is marked blocked with the reason, and
+the branch and worktree are kept so you can merge by hand. With
+`auto_merge: false`, `task_done` marks the task done and leaves the changes on
+`task/<slug>` for you. A blocked task keeps its worktree either way, so no
+work is lost.
+
+The panic guard counts runs where the session went idle and the worktree has
+no new changes. Any change resets the count. At the limit the session is
+deleted; the board is not changed, so the task stays in progress and starts
+over in a fresh session on the next check.
+
+Projects that are not git repos ignore `worktree` and run as before.
+
+`tasks_debug` shows each worktree's branch, base, clean/dirty state, commits
+ahead, and the current panic count.
 
 ## Sessions
 
@@ -178,8 +229,8 @@ For your own sessions:
 - `tasks_stop`: turn background work off for this session.
 - `tasks_run`: run one task now by slug, whether background work is on or off.
 - `tasks_debug`: show a diagnostic report — board summary, saved run state,
-  blocked reasons, scheduler status, connection to OpenCode, the next waiting
-  task, and recent worker log lines.
+  blocked reasons, worktree status, scheduler status, connection to OpenCode,
+  the next waiting task, and recent worker log lines.
 
 For the agent running a task:
 

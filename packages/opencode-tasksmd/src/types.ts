@@ -31,6 +31,8 @@ export type PluginClient = {
     update: (params: unknown) => Promise<SessionResult<SessionRecord>>
     status: (params: unknown) => Promise<SessionResult<Record<string, SessionStatus>>>
     promptAsync: (params: unknown) => Promise<SessionResult<unknown>>
+    /** Optional: used for session panic. Missing on older SDKs — callers degrade. */
+    delete?: (params: unknown) => Promise<SessionResult<unknown>>
   }
 }
 

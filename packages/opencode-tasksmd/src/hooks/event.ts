@@ -3,7 +3,12 @@ import path from "node:path"
 
 import { parseChecklist } from "@leonardmeagher2/tasksmd"
 import { tryRunTask } from "../tasks-runtime"
-import { readState } from "../state"
+import { readState, updateTask } from "../state"
+import { parseWorktree } from "../config"
+import { loadTaskConfig } from "../task-config"
+import { slugForSession } from "../task-session"
+import { log, resolveProjectRoot } from "../worker/common"
+import { hasChanges } from "../worktree"
 import { showToast } from "./toast"
 import type { PluginClient } from "../types"
 
@@ -65,12 +70,62 @@ async function toastFinishedSession(client: PluginClient, directory: string, ses
   }
 }
 
+/**
+ * Session panic: when a worktree task's session goes idle without producing
+ * any change, count it. At the configured limit, drop the session — the board
+ * is untouched, so the next check simply starts the task fresh. Any change
+ * resets the count.
+ */
+export async function checkPanic(client: PluginClient, directory: string, sessionID: string, graceMs = 2000): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, graceMs))
+  const projectRoot = resolveProjectRoot(directory)
+  const slug = slugForSession(projectRoot, sessionID)
+  if (!slug) return
+  const run = readState(projectRoot).tasks[slug]
+  if (!run?.worktree || !run.branch) return
+
+  const board = boardPath(projectRoot)
+  if (!existsSync(board)) return
+  const content = readFileSync(board, "utf-8")
+  const parsed = parseChecklist(content)
+  const task = parsed.roots.find((t) => t.slug === slug)
+  if (!task || task.state !== "active") return
+
+  const config = parseWorktree(loadTaskConfig(projectRoot, content, task).worktree)
+  if (!config.enabled || config.attempts <= 0) return
+
+  const base = run.base ?? "HEAD"
+  const info = { path: run.worktree, branch: run.branch, base }
+  if (hasChanges(info, base)) {
+    if (run.empty_attempts) updateTask(projectRoot, slug, { empty_attempts: undefined })
+    return
+  }
+
+  const attempts = (run.empty_attempts ?? 0) + 1
+  if (attempts < config.attempts) {
+    updateTask(projectRoot, slug, { empty_attempts: attempts })
+    log(projectRoot, `task=${slug} action=empty-attempt count=${attempts} limit=${config.attempts}`)
+    return
+  }
+
+  log(projectRoot, `task=${slug} action=panic attempts=${attempts}`)
+  try {
+    await client.session.delete?.({ path: { id: sessionID }, query: { directory: run.worktree } })
+  } catch {
+    // A session that cannot be deleted is orphaned; clearing the id still restarts fresh.
+  }
+  updateTask(projectRoot, slug, { session_id: undefined, empty_attempts: undefined })
+}
+
 export function createEventHook(client: PluginClient, directory: string) {
   return {
     event: async ({ event }: { event: { type?: string; properties?: Record<string, unknown> } }) => {
       if (event.type === "session.idle") {
         const sessionID = event.properties?.sessionID
-        if (typeof sessionID === "string" && sessionID) await toastFinishedSession(client, directory, sessionID)
+        if (typeof sessionID === "string" && sessionID) {
+          await toastFinishedSession(client, directory, sessionID)
+          await checkPanic(client, directory, sessionID)
+        }
         return
       }
 

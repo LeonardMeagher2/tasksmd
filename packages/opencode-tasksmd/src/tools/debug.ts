@@ -5,7 +5,9 @@ import { parseChecklist } from "@leonardmeagher2/tasksmd"
 import { boardSchedules, scheduleDetail } from "../schedule"
 import { logFile, readState } from "../state"
 import { taskRuntimeConnected, taskSchedulersEnabled } from "../tasks-runtime"
-import { parseEvery, parseMaxActive } from "../config"
+import { parseEvery, parseMaxActive, parseWorktree } from "../config"
+import { loadTaskConfig } from "../task-config"
+import { commitsAhead, hasChanges } from "../worktree"
 
 export function createDebugTool(directory: string) {
   return {
@@ -37,6 +39,17 @@ export function createDebugTool(directory: string) {
           if (t.state !== "blocked") continue
           const reason = state.tasks[t.slug]?.blocked_reason
           lines.push(`  blocked ${t.slug}${reason ? `: ${reason}` : ""}`)
+        }
+        for (const t of parsed.roots) {
+          const run = state.tasks[t.slug]
+          if (!run?.worktree || !run.branch) continue
+          const base = run.base ?? "HEAD"
+          const info = { path: run.worktree, branch: run.branch, base }
+          const limit = parseWorktree(loadTaskConfig(directory, content, t).worktree).attempts
+          lines.push(
+            `  worktree ${t.slug}: branch ${run.branch}, base ${base}, ${hasChanges(info, base) ? "dirty" : "clean"}, ` +
+              `${commitsAhead(info, base)} ahead, empty_attempts ${run.empty_attempts ?? 0}/${limit}`,
+          )
         }
         for (const [slug, interval] of Object.entries(configured)) {
           lines.push(`  scheduler ${slug || "(board)"}: every ${interval}s${scheduleDetail(state, slug, interval)}`)

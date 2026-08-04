@@ -1,11 +1,13 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { spawnSync } from "node:child_process"
 import { afterEach, describe, expect, test } from "bun:test"
 
 import { parseChecklist } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
 import { addTaskSession, readState, stateFile, updateTask } from "../state"
+import { ensureWorktree } from "../worktree"
 import { createTaskTools, linkedTaskInfo, taskInfoText } from "./task"
 
 const dirs: string[] = []
@@ -115,5 +117,70 @@ describe("task_done", () => {
 
     expect(result).toBe('Task "ship-it" marked done.')
     expect(readState(dir).tasks["ship-it"]?.blocked_reason).toBeUndefined()
+  })
+})
+
+describe("task_done with a worktree", () => {
+  function git(cwd: string, args: string[]): void {
+    const result = spawnSync("git", args, { cwd, encoding: "utf-8" })
+    if (result.status !== 0) throw new Error(`git ${args.join(" ")} failed: ${result.stderr}`)
+  }
+
+  function initBoard(): string {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "tasksmd-task-tool-"))
+    dirs.push(dir)
+    git(dir, ["init", "-b", "main"])
+    git(dir, ["config", "user.name", "test"])
+    git(dir, ["config", "user.email", "test@example.com"])
+    git(dir, ["config", "core.autocrlf", "false"])
+    writeFileSync(path.join(dir, "TASKS.md"), "---\nworktree: true\n---\n- [~] Ship it\n")
+    writeFileSync(path.join(dir, "file.txt"), "base\n")
+    git(dir, ["add", "-A"])
+    git(dir, ["commit", "-m", "init"])
+    return dir
+  }
+
+  function seedWorktreeRun(dir: string) {
+    const info = ensureWorktree(dir, "ship-it")!
+    writeFileSync(path.join(info.path, "file.txt"), "from worktree\n")
+    addTaskSession(dir, "ship-it", "session-1")
+    updateTask(dir, "ship-it", { worktree: info.path, branch: info.branch, base: info.base })
+    return info
+  }
+
+  test("auto_merge commits, merges, cleans up, and marks done", async () => {
+    const dir = initBoard()
+    const info = seedWorktreeRun(dir)
+
+    const tools = createTaskTools(dir)
+    const result = await tools.task_done.execute({}, { sessionID: "session-1" } as any)
+
+    expect(result).toBe('Task "ship-it" marked done and merged task/ship-it.')
+    const task = parseChecklist(readFileSync(path.join(dir, "TASKS.md"), "utf-8")).tasks[0]
+    expect(task?.state).toBe("done")
+    expect(readFileSync(path.join(dir, "file.txt"), "utf-8")).toBe("from worktree\n")
+    expect(existsSync(info.path)).toBe(false)
+
+    const run = readState(dir).tasks["ship-it"]
+    expect(run?.worktree).toBeUndefined()
+    expect(run?.branch).toBeUndefined()
+  })
+
+  test("a merge conflict blocks the task and keeps the branch", async () => {
+    const dir = initBoard()
+    const info = seedWorktreeRun(dir)
+
+    writeFileSync(path.join(dir, "file.txt"), "from main\n")
+    git(dir, ["add", "-A"])
+    git(dir, ["commit", "-m", "main moves"])
+
+    const tools = createTaskTools(dir)
+    const result = await tools.task_done.execute({}, { sessionID: "session-1" } as any)
+
+    expect(result).toContain('Task "ship-it" was marked blocked: auto-merge could not merge task/ship-it cleanly')
+    const task = parseChecklist(readFileSync(path.join(dir, "TASKS.md"), "utf-8")).tasks[0]
+    expect(task?.state).toBe("blocked")
+    expect(readState(dir).tasks["ship-it"]?.blocked_reason).toContain("auto-merge")
+    expect(existsSync(info.path)).toBe(true)
   })
 })
