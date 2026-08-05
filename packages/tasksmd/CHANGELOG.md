@@ -1,5 +1,31 @@
 # @leonardmeagher2/tasksmd
 
+## 0.6.0
+
+### Minor Changes
+
+- be5ef29: Add `stripFrontmatter.
+
+  `tasksmd` gains a `stripFrontmatter(content)` export: the document body with
+  its leading YAML frontmatter block removed. The content is returned unchanged
+  when there is no frontmatter block or it is never closed.
+
+- be5ef29: Rename `frontmatter` to `parseFrontmatter`, and `Board.path` to
+  `Board.boardPath`.
+
+  `frontmatter(content)` is now `parseFrontmatter(content)`, matching the verb
+  naming of `parseChecklist`, `serializeFrontmatter`, `mergeFrontmatter`, and
+  `stripFrontmatter`. `Board.path` is now `Board.boardPath`, matching
+  `TaskContext.boardPath`. Both are breaking changes for callers.
+
+### Patch Changes
+
+- be5ef29: Align package READMEs with current tool behavior.
+
+  The `tasksmd` README now distinguishes state updates from structural updates
+  and documents the exact return values of `create`, `addTask`, and
+  `removeTask`.
+
 ## 0.5.0
 
 ### Minor Changes

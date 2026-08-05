@@ -1,5 +1,51 @@
 # @leonardmeagher2/opencode-tasksmd
 
+## 0.11.0
+
+### Minor Changes
+
+- be5ef29: Improve the tool APIs.
+
+  - `task_done`'s `reason` argument is renamed to `blocked_reason`, so a task is
+    only marked blocked on purpose. This is a breaking change to the tool's
+    schema.
+  - Blocked reasons are now kept in task state and shown by `tasks_debug` and
+    the blocked notification. Marking a task done clears its stored reason.
+  - New `tasks_run` tool runs one task now by slug, whether schedulers are on or
+    off. It refuses blocked tasks and declines while another run is in flight.
+    Task sessions are denied `tasks_run`, like the other scheduler tools.
+
+- be5ef29: Improve `task_info` output with task location and linked-task context.
+
+  `task_info` now includes the task's line in `TASKS.md` and, when linked content
+  exists, the same linked-task context block used by the first prompt. It also no
+  longer throws when a linked path is missing or unreadable, and reports those
+  states explicitly instead.
+
+  `task_done` now accepts an optional `reason`. With no reason it marks the task
+  done; with a reason it marks the task blocked and reports that reason. The
+  separate `task_blocked` tool is removed.
+
+### Patch Changes
+
+- be5ef29: Stop injecting linked-task frontmatter into worker prompts.
+
+  A linked file's frontmatter is config — already merged into the run — so it no
+  longer appears in the first prompt or in `task_info` output.
+
+- be5ef29: Align package READMEs with current tool behavior.
+
+  The `opencode-tasksmd` README now matches the current tools: blocking is done
+  by calling `task_done` with a reason, `task_info` output includes the task's
+  line and linked file content, and background work is described as starting
+  with `tasks_start` and stopping when OpenCode closes. The tools section is
+  split into session tools and task tools.
+
+- Updated dependencies [be5ef29]
+- Updated dependencies [be5ef29]
+- Updated dependencies [be5ef29]
+  - @leonardmeagher2/tasksmd@0.6.0
+
 ## 0.10.1
 
 ### Patch Changes
