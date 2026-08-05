@@ -7,6 +7,8 @@ export type TaskRunState = {
   session_id?: string
   exit_code?: number
   output?: string
+  /** Why the task is blocked, as reported by the task session. */
+  blocked_reason?: string
   /** When a run was last dispatched, successful or not. Drives recurring schedules. */
   last_run?: string
   last_completed?: string
@@ -90,6 +92,7 @@ export function readState(directory: string): ProjectState {
           session_id,
           exit_code: typeof record.exit_code === "number" ? record.exit_code : undefined,
           output: typeof record.output === "string" ? record.output : undefined,
+          blocked_reason: typeof record.blocked_reason === "string" ? record.blocked_reason : undefined,
           last_run: typeof record.last_run === "string" ? record.last_run : undefined,
           last_completed: typeof record.last_completed === "string" ? record.last_completed : undefined,
         }] satisfies [string, TaskRunState]

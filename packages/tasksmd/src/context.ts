@@ -3,7 +3,7 @@ import path from "node:path"
 
 import { createChecklist, insertTask, parseChecklist, removeTask, replaceTask, slugify } from "./checklist"
 import type { ChecklistTask, TaskInput, TaskState } from "./checklist"
-import { frontmatter, mergeFrontmatter } from "./frontmatter"
+import { mergeFrontmatter, parseFrontmatter } from "./frontmatter"
 
 /**
  * Opaque handle to one task on a board. Callers work with slugs and states;
@@ -26,7 +26,7 @@ export type TaskContext = {
 }
 
 export type Board = {
-  readonly path: string
+  readonly boardPath: string
   exists(): boolean
   /** Top-level tasks (work items). Subtasks live on their parent's `.subtasks`. */
   tasks(): ChecklistTask[]
@@ -76,12 +76,12 @@ export function taskContext(from: string, slug: string): TaskContext {
     current,
     state: () => current()?.state,
     config: () => {
-      const boardConfig = frontmatter(readBoard(boardPath) ?? "")
+      const boardConfig = parseFrontmatter(readBoard(boardPath) ?? "")
       const task = current()
       if (!task?.link) return boardConfig
       const linked = readBoard(path.join(path.dirname(boardPath), task.link.path))
       if (linked === undefined) return boardConfig
-      return mergeFrontmatter(boardConfig, frontmatter(linked))
+      return mergeFrontmatter(boardConfig, parseFrontmatter(linked))
     },
     setState,
     markActive: () => setState("active"),
@@ -94,10 +94,10 @@ export function taskContext(from: string, slug: string): TaskContext {
 export function openBoard(from: string): Board {
   const boardPath = boardPathFrom(from)
   return {
-    path: boardPath,
+    boardPath,
     exists: () => readBoard(boardPath) !== undefined,
     tasks: () => parseChecklist(readBoard(boardPath) ?? "").roots,
-    config: () => frontmatter(readBoard(boardPath) ?? ""),
+    config: () => parseFrontmatter(readBoard(boardPath) ?? ""),
     task: (slug: string) => taskContext(boardPath, slug),
     create: (options = {}) => {
       if (!options.overwrite && readBoard(boardPath) !== undefined) return false

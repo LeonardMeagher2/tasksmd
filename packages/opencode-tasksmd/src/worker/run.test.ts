@@ -68,7 +68,7 @@ describe("taskPrompt", () => {
     expect(prompt).not.toContain("Steps")
     expect(prompt).not.toContain("Linked task context")
     expect(prompt).toContain("task_done")
-    expect(prompt).toContain("task_blocked")
+    expect(prompt).toContain("blocked_reason")
     expect(prompt).toContain("task_info")
   })
 
@@ -92,6 +92,17 @@ describe("linkedTaskContextBlock", () => {
     const context = linkedTaskContextBlock("docs/task.md", "a".repeat(LINKED_TASK_BODY_LIMIT + 20))
     expect(context).toContain("truncated")
   })
+
+  test("does not inject the linked file's frontmatter", () => {
+    const context = linkedTaskContextBlock("docs/task.md", "---\nevery: 1 hour\n---\n\n# Goal\nShip it")
+    expect(context).toContain("# Goal")
+    expect(context).not.toContain("every")
+  })
+
+  test("treats a frontmatter-only file as empty", () => {
+    const context = linkedTaskContextBlock("docs/task.md", "---\nevery: 1 hour\n---\n")
+    expect(context).toContain("(Linked task file is empty)")
+  })
 })
 
 describe("sessionIsBusy", () => {
@@ -107,11 +118,11 @@ describe("sessionPermissionRules", () => {
     expect(sessionPermissionRules({})).toEqual([
       { permission: "task", pattern: "*", action: "deny" },
       { permission: "task_done", pattern: "*", action: "allow" },
-      { permission: "task_blocked", pattern: "*", action: "allow" },
       { permission: "task_info", pattern: "*", action: "allow" },
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
       { permission: "tasks_stop", pattern: "*", action: "deny" },
+      { permission: "tasks_run", pattern: "*", action: "deny" },
     ])
   })
 
@@ -120,11 +131,11 @@ describe("sessionPermissionRules", () => {
       { permission: "*", pattern: "*", action: "allow" },
       { permission: "task", pattern: "*", action: "deny" },
       { permission: "task_done", pattern: "*", action: "allow" },
-      { permission: "task_blocked", pattern: "*", action: "allow" },
       { permission: "task_info", pattern: "*", action: "allow" },
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
       { permission: "tasks_stop", pattern: "*", action: "deny" },
+      { permission: "tasks_run", pattern: "*", action: "deny" },
     ])
   })
 
@@ -133,11 +144,11 @@ describe("sessionPermissionRules", () => {
       { permission: "*", pattern: "*", action: "deny" },
       { permission: "task", pattern: "*", action: "deny" },
       { permission: "task_done", pattern: "*", action: "allow" },
-      { permission: "task_blocked", pattern: "*", action: "allow" },
       { permission: "task_info", pattern: "*", action: "allow" },
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
       { permission: "tasks_stop", pattern: "*", action: "deny" },
+      { permission: "tasks_run", pattern: "*", action: "deny" },
     ])
   })
 
@@ -145,11 +156,11 @@ describe("sessionPermissionRules", () => {
     expect(sessionPermissionRules({ permission: { task: "allow" } })).toEqual([
       { permission: "task", pattern: "*", action: "allow" },
       { permission: "task_done", pattern: "*", action: "allow" },
-      { permission: "task_blocked", pattern: "*", action: "allow" },
       { permission: "task_info", pattern: "*", action: "allow" },
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
       { permission: "tasks_stop", pattern: "*", action: "deny" },
+      { permission: "tasks_run", pattern: "*", action: "deny" },
     ])
   })
 
@@ -157,11 +168,11 @@ describe("sessionPermissionRules", () => {
     expect(sessionPermissionRules({ permission: { task: "deny" } })).toEqual([
       { permission: "task", pattern: "*", action: "deny" },
       { permission: "task_done", pattern: "*", action: "allow" },
-      { permission: "task_blocked", pattern: "*", action: "allow" },
       { permission: "task_info", pattern: "*", action: "allow" },
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
       { permission: "tasks_stop", pattern: "*", action: "deny" },
+      { permission: "tasks_run", pattern: "*", action: "deny" },
     ])
   })
 
@@ -169,11 +180,11 @@ describe("sessionPermissionRules", () => {
     expect(sessionPermissionRules({ permission: { task: { explore: "allow" } } })).toEqual([
       { permission: "task", pattern: "explore", action: "allow" },
       { permission: "task_done", pattern: "*", action: "allow" },
-      { permission: "task_blocked", pattern: "*", action: "allow" },
       { permission: "task_info", pattern: "*", action: "allow" },
       { permission: "tasks_debug", pattern: "*", action: "deny" },
       { permission: "tasks_start", pattern: "*", action: "deny" },
       { permission: "tasks_stop", pattern: "*", action: "deny" },
+      { permission: "tasks_run", pattern: "*", action: "deny" },
     ])
   })
 })
@@ -243,8 +254,9 @@ describe("permission rule precedence", () => {
   })
 
   test("the plugin's own rules cannot be overridden by a board", () => {
-    const rules = sessionPermissionRules({ permission: { "*": "allow", tasks_stop: "allow" } })
+    const rules = sessionPermissionRules({ permission: { "*": "allow", tasks_stop: "allow", tasks_run: "allow" } })
     expect(action(rules, "tasks_stop")).toBe("deny")
+    expect(action(rules, "tasks_run")).toBe("deny")
     expect(action(rules, "task_done")).toBe("allow")
   })
 })
@@ -509,6 +521,15 @@ describe("runTaskBySlug", () => {
     expect(prompts()).toBe(1)
   })
 
+  test("a forced run ignores the recurring due-check", async () => {
+    const dir = recurringProject()
+    updateTask(dir, "hourly-review", { last_run: new Date().toISOString() })
+
+    const { client, prompts } = countingClient()
+    await runTaskBySlug(dir, "hourly-review", client, true)
+    expect(prompts()).toBe(1)
+  })
+
   test("does not add trailing blank lines when a missing linked task is blocked", async () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "tasksmd-run-"))
     dirs.push(dir)
@@ -524,4 +545,3 @@ describe("runTaskBySlug", () => {
     expect(content.endsWith("\n\n")).toBe(false)
   })
 })
-

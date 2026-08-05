@@ -103,6 +103,28 @@ export function tryRunTask(directory: string): void {
   spawnWorker(directory)
 }
 
+/**
+ * Run one task now, whether or not schedulers are enabled. Goes through the
+ * same per-project in-flight guard as scheduled runs, so it can never overlap
+ * one. Returns false when the runtime is unavailable or a run is already going.
+ */
+export async function runTaskNow(directory: string, taskSlug: string): Promise<boolean> {
+  const state = runtimeState(directory)
+  const client = state.client
+  if (!client) return false
+  if (state.inFlight) return false
+  const run = runWorker(directory, client, taskSlug, true)
+  state.inFlight = run
+    .catch((error) => {
+      log(directory, `task=${taskSlug} status=failed reason=${error instanceof Error ? error.message : String(error)}`)
+    })
+    .finally(() => {
+      state.inFlight = undefined
+    })
+  await state.inFlight
+  return true
+}
+
 export function startTaskSchedulers(directory: string): void {
   const state = runtimeState(directory)
   state.enabled = true

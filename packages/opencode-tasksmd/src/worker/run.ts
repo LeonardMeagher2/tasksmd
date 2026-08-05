@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
 import path from "node:path"
 
-import { parseChecklist, replaceTask } from "@leonardmeagher2/tasksmd"
+import { parseChecklist, replaceTask, stripFrontmatter } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
 import { modelValue, permissionRules, taskPermissions, withDefaultTaskDeny } from "../config"
 import { scheduleDue, taskSchedules } from "../schedule"
@@ -25,8 +25,11 @@ export const LINKED_TASK_BODY_LIMIT = 6000
 /** How much of a failure message is kept in the task's run record. */
 export const OUTPUT_LIMIT = 2000
 
+// A linked file's frontmatter is config, already merged into the run via
+// `loadTaskConfig` — injecting it into prompts is noise the agent can mistake
+// for instructions, so it is stripped here.
 export function linkedTaskContextBlock(linkPath: string, body: string, limit = LINKED_TASK_BODY_LIMIT): string {
-  const trimmed = body.trim()
+  const trimmed = stripFrontmatter(body).trim()
   if (!trimmed) return `Linked task file: ${linkPath}\n\n(Linked task file is empty)`
   if (trimmed.length <= limit) return `Linked task file: ${linkPath}\n\n${trimmed}`
   return `Linked task file: ${linkPath}\n\n${trimmed.slice(0, limit)}\n\n[Linked task content truncated to ${limit} characters. Read the full linked file before making changes.]`
@@ -38,7 +41,7 @@ export function taskPrompt(task: ChecklistTask, kind: PromptKind, linkedContext 
 Continue the task.
 Use the task_info tool to see the task.
 When done, use the task_done tool.
-If stuck, use the task_blocked tool and say why.`
+If stuck, use the task_done tool with blocked_reason.`
   }
 
   const intro = kind === "recurring" ? "This task runs on a schedule. You did it before. Do it again now:" : "Do this task:"
@@ -57,7 +60,7 @@ Steps:
 3. Check the work.
 4. Use the task_done tool.
 
-If you cannot do the task, use the task_blocked tool and say why.
+If you cannot do the task, use the task_done tool with blocked_reason.
 To see the task again, use the task_info tool.`
 }
 
@@ -191,11 +194,11 @@ export function sessionPermissionRules(
     ...(autoApprove ? autoApprovedRules(baseRuleset) : []),
     ...[...configured].sort(bySpecificity),
     { permission: "task_done", pattern: "*", action: "allow" },
-    { permission: "task_blocked", pattern: "*", action: "allow" },
     { permission: "task_info", pattern: "*", action: "allow" },
     { permission: "tasks_debug", pattern: "*", action: "deny" },
     { permission: "tasks_start", pattern: "*", action: "deny" },
     { permission: "tasks_stop", pattern: "*", action: "deny" },
+    { permission: "tasks_run", pattern: "*", action: "deny" },
   ]
 }
 
@@ -382,7 +385,7 @@ async function runResolvedTask(
   log(projectRoot, `task=${task.slug} status=${status} exit_code=${exitCode} session=${sessionId || "none"}`)
 }
 
-export async function runTaskBySlug(directory: string, targetSlug: string, client: PluginClient): Promise<void> {
+export async function runTaskBySlug(directory: string, targetSlug: string, client: PluginClient, force = false): Promise<void> {
   const projectRoot = resolveProjectRoot(directory)
   const tasksFile = tasksFilePath(projectRoot)
   if (!existsSync(tasksFile)) return
@@ -402,9 +405,10 @@ export async function runTaskBySlug(directory: string, targetSlug: string, clien
   }
 
   // A timer only wakes the task up; state decides whether it is really due, so
-  // a run triggered from elsewhere in the meantime is not repeated here.
+  // a run triggered from elsewhere in the meantime is not repeated here. A
+  // forced run (tasks_run) skips this check: the user asked for it now.
   const interval = taskSchedules(projectRoot, parsed)[targetSlug]
-  if (interval) {
+  if (!force && interval) {
     const lastRun = readState(projectRoot).tasks[targetSlug]?.last_run
     if (!scheduleDue(lastRun, interval)) {
       log(projectRoot, `task=${targetSlug} action=skip reason=not-due last_run=${lastRun}`)

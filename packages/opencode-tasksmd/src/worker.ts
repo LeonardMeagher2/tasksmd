@@ -7,13 +7,13 @@ import { log, resolveProjectRoot, tasksFilePath } from "./worker/common"
 import { findTask } from "./worker/select"
 import { runTask, runTaskBySlug } from "./worker/run"
 
-export async function runWorker(directory: string, client: PluginClient, taskSlug?: string): Promise<void> {
+export async function runWorker(directory: string, client: PluginClient, taskSlug?: string, force = false): Promise<void> {
   const projectRoot = resolveProjectRoot(directory)
   const tasksFile = tasksFilePath(projectRoot)
   if (!existsSync(tasksFile)) return
 
   if (taskSlug) {
-    await runTaskBySlug(projectRoot, taskSlug, client)
+    await runTaskBySlug(projectRoot, taskSlug, client, force)
     return
   }
 
