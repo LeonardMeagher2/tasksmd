@@ -4,7 +4,7 @@ import path from "node:path"
 import { parseChecklist, replaceTask, stripFrontmatter } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
 import { modelValue, permissionRules, taskPermissions, withDefaultTaskDeny } from "../config"
-import { scheduleDue, taskSchedules } from "../schedule"
+import { scheduleDue, taskSchedules, taskWatches } from "../schedule"
 import { addTaskSession, readState, updateTask } from "../state"
 import { latestSessionForTask } from "../task-session"
 import { loadTaskConfig } from "../task-config"
@@ -279,6 +279,12 @@ async function runAttached(
     }
   }
 
+  // The prompt is going out, so the dispatch consumes any pending watch
+  // trigger. Clearing here — before the session starts working — means a
+  // change landing during the run re-queues the task instead of being
+  // clobbered by the run's bookkeeping.
+  updateTask(directory, slug, { triggered: undefined })
+
   // The runtime continues the turn after promptAsync returns.
   const sent = await client.session.promptAsync({
     path: { id },
@@ -407,11 +413,18 @@ export async function runTaskBySlug(directory: string, targetSlug: string, clien
   // A timer only wakes the task up; state decides whether it is really due, so
   // a run triggered from elsewhere in the meantime is not repeated here. A
   // forced run (tasks_run) skips this check: the user asked for it now.
-  const interval = taskSchedules(projectRoot, parsed)[targetSlug]
-  if (!force && interval) {
-    const lastRun = readState(projectRoot).tasks[targetSlug]?.last_run
-    if (!scheduleDue(lastRun, interval)) {
-      log(projectRoot, `task=${targetSlug} action=skip reason=not-due last_run=${lastRun}`)
+  if (!force) {
+    const state = readState(projectRoot).tasks[targetSlug]
+    const scheduleMap = taskSchedules(projectRoot, parsed)
+    const interval = Object.hasOwn(scheduleMap, targetSlug) ? scheduleMap[targetSlug] : undefined
+    if (interval && !scheduleDue(state?.last_run, interval)) {
+      log(projectRoot, `task=${targetSlug} action=skip reason=not-due last_run=${state?.last_run}`)
+      return
+    }
+
+    const watches = taskWatches(projectRoot, parsed)
+    if (Object.hasOwn(watches, targetSlug) && state?.triggered !== true) {
+      log(projectRoot, `task=${targetSlug} action=skip reason=watch-not-triggered`)
       return
     }
   }

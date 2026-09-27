@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { tool } from "@opencode-ai/plugin"
 import { parseChecklist } from "@leonardmeagher2/tasksmd"
-import { boardSchedules, scheduleDetail } from "../schedule"
+import { boardSchedules, scheduleDetail, taskWatches } from "../schedule"
 import { logFile, readState } from "../state"
 import { taskRuntimeConnected, taskSchedulersEnabled } from "../tasks-runtime"
 import { parseEvery, parseMaxActive } from "../config"
@@ -40,6 +40,11 @@ export function createDebugTool(directory: string) {
         }
         for (const [slug, interval] of Object.entries(configured)) {
           lines.push(`  scheduler ${slug || "(board)"}: every ${interval}s${scheduleDetail(state, slug, interval)}`)
+        }
+        const watches = taskWatches(directory, parsed)
+        for (const [slug, config] of Object.entries(watches)) {
+          const fired = state.tasks[slug]?.triggered === true
+          lines.push(`  watcher ${slug}: watch ${config.paths.join(", ")}  ignore: ${config.ignore.join(", ")}  triggered: ${fired ? "yes" : "no"}`)
         }
 
         lines.push(`runtime: ${process.versions.bun ? "bun (opencode CLI host)" : "node (desktop host)"}`)

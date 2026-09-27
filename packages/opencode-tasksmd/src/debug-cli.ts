@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 import { parseChecklist } from "@leonardmeagher2/tasksmd"
 import { parseEvery, parseMaxActive } from "./config"
-import { boardSchedules, scheduleDetail } from "./schedule"
+import { boardSchedules, scheduleDetail, taskWatches } from "./schedule"
 import { logFile, readState } from "./state"
 
 const directory = resolveDir()
@@ -31,6 +31,11 @@ const configured = boardSchedules(directory, parsed)
 lines.push(`state: ${Object.keys(configured).length} configured scheduler(s), ${Object.keys(state.tasks).length} task record(s)`)
 for (const [slug, interval] of Object.entries(configured)) {
   lines.push(`  scheduler ${slug || "(board)"}: every ${interval}s${scheduleDetail(state, slug, interval)}`)
+}
+const watches = taskWatches(directory, parsed)
+for (const [slug, config] of Object.entries(watches)) {
+  const fired = state.tasks[slug]?.triggered === true
+  lines.push(`  watcher ${slug}: watch ${config.paths.join(", ")}  ignore: ${config.ignore.join(", ")}  triggered: ${fired ? "yes" : "no"}`)
 }
 
 // The board only: what the worker picks also depends on session status,

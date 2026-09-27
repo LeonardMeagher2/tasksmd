@@ -55,12 +55,23 @@ Linked task file example:
 ```md
 ---
 every: false
+watch:
+  paths:
+    - src/**
+  ignore:
+    - node_modules/**
+    - .git/**
+    - dist/**
+    - TASKS.md
 model: anthropic/claude-sonnet-4-6
 permission:
   read: allow
   edit: ask
 ---
 ```
+
+`watch` also accepts a string or list of paths. In object form, `ignore`
+replaces the default exclusions; see the package README for details.
 
 How it works:
 
@@ -117,8 +128,8 @@ If ambiguity changes the outcome, ask one focused question.
 
 This skill covers non-OpenCode `TASKS.md` structure and authoring guidance.
 
-For frontmatter keys interpreted by `opencode-tasksmd` (`every`, `model`,
-`agent`, `max_active`, `auto_approve`, `permission`), use the package README:
+For frontmatter keys interpreted by `opencode-tasksmd` (`every`, `watch`,
+`model`, `agent`, `max_active`, `auto_approve`, `permission`), use the package README:
 
 - `packages/opencode-tasksmd/README.md`
 

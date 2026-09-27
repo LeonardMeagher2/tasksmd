@@ -1,6 +1,6 @@
 import type { Checklist, ChecklistTask } from "@leonardmeagher2/tasksmd"
 import { parseMaxActive } from "../config"
-import { scheduleDue, taskSchedules } from "../schedule"
+import { scheduleDue, taskSchedules, taskWatches } from "../schedule"
 import { readState } from "../state"
 import type { PluginClient, SessionStatus } from "../types"
 import { resolveProjectRoot } from "./common"
@@ -18,16 +18,18 @@ export const DISPATCH_GRACE_MS = 10_000
  * taking the first one that can run right now. A task whose session is still
  * working is passed over, never waited on.
  *
- * Eligibility, in board order:
- * - a task with its own `every` runs when it is due again, whatever its state;
- * - an active task is resumed;
- * - a pending task starts.
+ * Eligibility, in board order. A task is *due* — it should run when it can —
+ * when every trigger it declares is satisfied:
+ * - `every`: due when its interval has elapsed (or it has never run);
+ * - `watch`: due when a watched path changed since its last dispatch;
+ * - both together mean both must hold;
+ * - a task with neither is due by board state — active tasks resume, pending start.
  *
- * Position decides order. Recurring tasks sit in the board's order like
- * everything else, so putting them at the top is what makes them run before the
- * work below; being due never lets one jump ahead of a task above it.
+ * Position decides order. Recurring and watched tasks sit in the board's order
+ * like everything else, so putting them at the top is what makes them run before
+ * the work below; being due never lets one jump ahead of a task above it.
  *
- * `max_active` caps how many sessions may be working at once, recurring tasks
+ * `max_active` caps how many sessions may be working at once, due tasks
  * included — while every slot is taken, nothing new starts, and `false` or `0`
  * removes the cap. A task left marked active with an idle session, or none at
  * all, holds nothing back: the board marker says a task was started, not that
@@ -44,6 +46,7 @@ export async function findTask(directory: string, parsed: Checklist, client: Plu
   }
 
   const schedules = taskSchedules(projectRoot, parsed)
+  const watches = taskWatches(projectRoot, parsed)
   const tasks = readState(projectRoot).tasks
   const now = Date.now()
 
@@ -63,9 +66,16 @@ export async function findTask(directory: string, parsed: Checklist, client: Plu
     if (task.state === "blocked") continue
     if (occupied(task.slug)) continue
 
-    const interval = schedules[task.slug]
-    if (interval) {
-      if (scheduleDue(tasks[task.slug]?.last_run, interval, now)) return task
+    // `in` and plain indexing reach into Object.prototype — a slug like
+    // "constructor" would look configured when it is not. hasOwn stays safe.
+    const interval = Object.hasOwn(schedules, task.slug) ? schedules[task.slug] : undefined
+    const watched = Object.hasOwn(watches, task.slug)
+    if (interval || watched) {
+      // Due-ness comes from the task's triggers, not its board marker. Every
+      // declared trigger must hold: elapsed for `every`, a change for `watch`.
+      const everyDue = !interval || scheduleDue(tasks[task.slug]?.last_run, interval, now)
+      const watchDue = !watched || tasks[task.slug]?.triggered === true
+      if (everyDue && watchDue) return task
       continue
     }
 

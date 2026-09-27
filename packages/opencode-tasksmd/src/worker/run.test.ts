@@ -513,6 +513,20 @@ describe("runTaskBySlug", () => {
     expect(prompts()).toBe(1)
   })
 
+  test("a recurring task with watch also requires a watch trigger", async () => {
+    const dir = recurringProject()
+    writeFileSync(path.join(dir, "checks", "hourly.md"), "---\nevery: 1 hour\nwatch: src/**\n---\nreview\n")
+    updateTask(dir, "hourly-review", { last_run: new Date(Date.now() - 7200_000).toISOString() })
+
+    const { client, prompts } = countingClient()
+    await runTaskBySlug(dir, "hourly-review", client)
+    expect(prompts()).toBe(0)
+
+    updateTask(dir, "hourly-review", { triggered: true })
+    await runTaskBySlug(dir, "hourly-review", client)
+    expect(prompts()).toBe(1)
+  })
+
   test("runs a recurring task that has never run", async () => {
     const dir = recurringProject()
 

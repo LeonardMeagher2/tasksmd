@@ -1,5 +1,45 @@
 import { describe, expect, test } from "bun:test"
-import { parseEvery, parseMaxActive, taskPermissions, permissionRules, modelValue, withDefaultTaskDeny } from "./config"
+import { DEFAULT_WATCH_IGNORES, parseEvery, parseMaxActive, parseWatch, taskPermissions, permissionRules, modelValue, withDefaultTaskDeny } from "./config"
+
+describe("parseWatch", () => {
+  test("single string becomes a one-item list", () => {
+    expect(parseWatch("src/**")).toEqual({ paths: ["src/**"], ignore: DEFAULT_WATCH_IGNORES })
+  })
+
+  test("trims and drops empty strings", () => {
+    expect(parseWatch("  src/**  ")).toEqual({ paths: ["src/**"], ignore: DEFAULT_WATCH_IGNORES })
+    expect(parseWatch("   ")).toEqual({ paths: [], ignore: DEFAULT_WATCH_IGNORES })
+  })
+
+  test("list of strings is cleaned", () => {
+    expect(parseWatch(["src/**", " README.md ", "", 12])).toEqual({
+      paths: ["src/**", "README.md"],
+      ignore: DEFAULT_WATCH_IGNORES,
+    })
+  })
+
+  test("object form can replace default ignores", () => {
+    expect(parseWatch({ paths: ["src/**"], ignore: ["build/**"] })).toEqual({
+      paths: ["src/**"],
+      ignore: ["build/**"],
+    })
+    expect(parseWatch({ paths: ["dist/**"], ignore: [] })).toEqual({ paths: ["dist/**"], ignore: [] })
+    expect(parseWatch({ paths: "src/**" })).toEqual({ paths: ["src/**"], ignore: DEFAULT_WATCH_IGNORES })
+  })
+
+  test("false and 0 disable", () => {
+    expect(parseWatch(false)).toEqual({ paths: [], ignore: DEFAULT_WATCH_IGNORES })
+    expect(parseWatch(0)).toEqual({ paths: [], ignore: DEFAULT_WATCH_IGNORES })
+    expect(parseWatch("0")).toEqual({ paths: [], ignore: DEFAULT_WATCH_IGNORES })
+  })
+
+  test("unrecognised values watch nothing", () => {
+    expect(parseWatch(undefined)).toEqual({ paths: [], ignore: DEFAULT_WATCH_IGNORES })
+    expect(parseWatch(null)).toEqual({ paths: [], ignore: DEFAULT_WATCH_IGNORES })
+    expect(parseWatch(12)).toEqual({ paths: [], ignore: DEFAULT_WATCH_IGNORES })
+    expect(parseWatch({ other: ["src/**"] })).toEqual({ paths: [], ignore: DEFAULT_WATCH_IGNORES })
+  })
+})
 
 describe("parseEvery", () => {
   test("returns 0 for false", () => {

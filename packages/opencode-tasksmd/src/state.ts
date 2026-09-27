@@ -12,6 +12,8 @@ export type TaskRunState = {
   /** When a run was last dispatched, successful or not. Drives recurring schedules. */
   last_run?: string
   last_completed?: string
+  /** A watched path changed since the task's last dispatch. Set by watchers, cleared on dispatch. */
+  triggered?: boolean
 }
 
 export type ProjectState = {
@@ -95,6 +97,7 @@ export function readState(directory: string): ProjectState {
           blocked_reason: typeof record.blocked_reason === "string" ? record.blocked_reason : undefined,
           last_run: typeof record.last_run === "string" ? record.last_run : undefined,
           last_completed: typeof record.last_completed === "string" ? record.last_completed : undefined,
+          triggered: record.triggered === true ? true : undefined,
         }] satisfies [string, TaskRunState]
       }),
     )

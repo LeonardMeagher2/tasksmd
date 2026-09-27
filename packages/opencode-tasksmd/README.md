@@ -61,17 +61,24 @@ call `task_info` at any time to re-read its task.
 ## Order of Work
 
 Each time it checks, OpenCode reads the board from top to bottom and takes the
-first task it can run right now:
+first task that is *due* — one that should run when it can. A task is due when
+every trigger it declares is satisfied:
 
-- a task with its own `every` runs when it is due again;
-- a task in progress is continued;
-- a waiting task starts.
+- a task with its own `every` is due when its interval has elapsed (or it has
+  never run);
+- a task with `watch` is due when a watched path has changed since its last run;
+- a task with both needs both — it re-runs at most every interval, and only when
+  files changed;
+- a task with neither is due by board state: in progress tasks continue, waiting
+  tasks start.
 
 A task that is still running is skipped rather than waited on, and the check
-moves down the board. Blocked tasks are left alone.
+moves down the board. Blocked tasks are left alone. A due task also waits when
+every `max_active` slot is taken, and starts once one frees.
 
-Position decides order, so a recurring task at the top of the board runs before
-the work below it. Being due does not let it jump ahead of a task above it.
+Position decides order, so a recurring or watched task at the top of the board
+runs before the work below it. Being due does not let it jump ahead of a task
+above it.
 
 ## Settings
 
@@ -97,6 +104,49 @@ interval, counted from the task's last run — so a restart does not lose the
 schedule, and a missed interval is picked up on the next check rather than
 skipped. Use `false` or `0` to disable it. Examples: `5 minutes`, `1h`,
 `3600`, `false`.
+
+`watch` triggers a task when files change. In a linked task file, it accepts a
+glob or list of globs resolved against the project root. A pattern naming a
+directory — by trailing slash, or by resolving to one — watches its contents;
+one matching files watches those files. The same setting covers both. By
+default, `.git`, `node_modules`, `dist`, and `TASKS.md` are ignored. Paths may
+also be absolute or relative to a parent directory, such as `../shared/**`.
+
+Use object form to customize ignored paths. Supplying `ignore` replaces the
+default list; `ignore: []` disables all default exclusions for that task.
+
+```md
+---
+watch:
+  paths:
+    - src/**
+    - README.md
+  ignore:
+    - node_modules/**
+    - .git/**
+    - dist/**
+    - TASKS.md
+---
+```
+
+When a watched path is added, changed, or deleted, the task becomes due and
+runs once a `max_active` slot is free. Rapid bursts of changes are coalesced
+into one run, and a trigger already pending when background work stops still
+fires on the next `tasks_start` — changes made while it is off are not seen.
+With `every` also set, both must hold — the task re-runs at most every interval,
+and only when files changed. Use `false` or `0` to disable it.
+
+```md
+---
+watch:
+  - src/**
+  - README.md
+---
+```
+
+A task that writes into its own watched paths will re-trigger itself after
+every run, so keep a task's outputs outside its `watch` globs or add them to its
+`ignore` list.
 
 `model` sets the default model for task runs.
 
@@ -157,7 +207,7 @@ report its own status, but it cannot control the scheduler.
 ### Linked Task Files
 
 Settings in a linked task file override the board's defaults for that task. A
-linked file can set `every`, `model`, `agent`, `auto_approve`, and
+linked file can set `every`, `watch`, `model`, `agent`, `auto_approve`, and
 `permission`.
 
 ## Sessions

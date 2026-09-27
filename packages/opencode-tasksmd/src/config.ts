@@ -22,6 +22,43 @@ export function parseEvery(value: unknown, fallback = 300): number {
   return Number.isFinite(asNumber) ? Math.round(asNumber) : fallback
 }
 
+export type WatchConfig = { paths: string[]; ignore: string[] }
+
+export const DEFAULT_WATCH_IGNORES = [
+  "**/.git",
+  "**/.git/**",
+  "**/node_modules",
+  "**/node_modules/**",
+  "**/dist",
+  "**/dist/**",
+  "TASKS.md",
+]
+
+function patternList(value: unknown): string[] | undefined {
+  const clean = (entry: unknown) => (typeof entry === "string" && entry.trim() ? entry.trim() : "")
+  if (typeof value === "string") return [clean(value)].filter(Boolean)
+  if (Array.isArray(value)) return value.map(clean).filter(Boolean)
+  return undefined
+}
+
+/**
+ * Parse a `watch` value into path and ignore globs. Legacy string/list forms
+ * keep the defaults; object form can replace them with its `ignore` list.
+ */
+export function parseWatch(value: unknown): WatchConfig {
+  const defaults = [...DEFAULT_WATCH_IGNORES]
+  if (value === false || value === 0 || value === "0") return { paths: [], ignore: defaults }
+
+  const legacyPaths = patternList(value)
+  if (legacyPaths) return { paths: legacyPaths, ignore: defaults }
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { paths: [], ignore: defaults }
+  const config = value as Record<string, unknown>
+  const paths = patternList(config.paths) ?? []
+  const ignore = Object.hasOwn(config, "ignore") ? patternList(config.ignore) ?? defaults : defaults
+  return { paths, ignore }
+}
+
 /**
  * Parse `max_active` into a session limit. `false`/`0` remove the limit, as
  * they do for `every`. Anything else that is not a whole number above zero
