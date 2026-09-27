@@ -1,5 +1,11 @@
 # @leonardmeagher2/opencode-tasksmd
 
+## 0.12.0
+
+### Minor Changes
+
+- 6488927: Add file-change watch triggers for linked tasks and include matching watch patterns in run prompts.
+
 ## 0.11.0
 
 ### Minor Changes
