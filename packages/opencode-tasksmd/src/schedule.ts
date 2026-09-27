@@ -5,7 +5,7 @@ import { parseFrontmatter } from "@leonardmeagher2/tasksmd"
 import type { Checklist } from "@leonardmeagher2/tasksmd"
 import { parseEvery, parseWatch } from "./config"
 import type { WatchConfig } from "./config"
-import type { ProjectState } from "./state"
+import type { ProjectState, TaskRunState } from "./state"
 
 /** Recurring intervals declared by root tasks, in seconds, keyed by task slug. */
 export function taskSchedules(directory: string, parsed: Checklist): Record<string, number> {
@@ -66,6 +66,20 @@ export function scheduleDue(lastRun: string | undefined, interval: number, now =
   return now - at >= interval * 1000
 }
 
+export type TaskReadiness = "ready" | "not-due" | "watch-not-changed"
+
+/** Check the configured `every` and `watch` conditions for one task. */
+export function taskReadiness(
+  interval: number | undefined,
+  hasWatch: boolean,
+  state: TaskRunState | undefined,
+  now = Date.now(),
+): TaskReadiness {
+  if (interval && !scheduleDue(state?.last_run, interval, now)) return "not-due"
+  if (hasWatch && state?.has_watch_changed !== true) return "watch-not-changed"
+  return "ready"
+}
+
 /** One line of diagnostics about where a task schedule stands. */
 export function scheduleDetail(state: ProjectState, slug: string, interval: number): string {
   if (!slug) return ""
@@ -88,10 +102,9 @@ export function anyTriggerDue(directory: string, parsed: Checklist, state: Proje
     const hasWatch = Object.hasOwn(watches, task.slug)
     if (!hasSchedule && !hasWatch) continue
 
-    const interval = hasSchedule ? schedules[task.slug] : 0
-    const everyDue = !hasSchedule || scheduleDue(state.tasks[task.slug]?.last_run, interval, now)
-    const watchDue = !hasWatch || state.tasks[task.slug]?.triggered === true
-    if (everyDue && watchDue) return true
+    const interval = hasSchedule ? schedules[task.slug] : undefined
+    const readiness = taskReadiness(interval, hasWatch, state.tasks[task.slug], now)
+    if (readiness === "ready") return true
   }
   return false
 }

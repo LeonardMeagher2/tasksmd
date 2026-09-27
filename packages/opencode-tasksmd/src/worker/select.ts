@@ -1,6 +1,6 @@
 import type { Checklist, ChecklistTask } from "@leonardmeagher2/tasksmd"
 import { parseMaxActive } from "../config"
-import { scheduleDue, taskSchedules, taskWatches } from "../schedule"
+import { taskReadiness, taskSchedules, taskWatches } from "../schedule"
 import { readState } from "../state"
 import type { PluginClient, SessionStatus } from "../types"
 import { resolveProjectRoot } from "./common"
@@ -69,13 +69,10 @@ export async function findTask(directory: string, parsed: Checklist, client: Plu
     // `in` and plain indexing reach into Object.prototype — a slug like
     // "constructor" would look configured when it is not. hasOwn stays safe.
     const interval = Object.hasOwn(schedules, task.slug) ? schedules[task.slug] : undefined
-    const watched = Object.hasOwn(watches, task.slug)
-    if (interval || watched) {
-      // Due-ness comes from the task's triggers, not its board marker. Every
-      // declared trigger must hold: elapsed for `every`, a change for `watch`.
-      const everyDue = !interval || scheduleDue(tasks[task.slug]?.last_run, interval, now)
-      const watchDue = !watched || tasks[task.slug]?.triggered === true
-      if (everyDue && watchDue) return task
+    const hasWatch = Object.hasOwn(watches, task.slug)
+    if (interval || hasWatch) {
+      // Due-ness comes from the task's conditions, not its board marker.
+      if (taskReadiness(interval, hasWatch, tasks[task.slug], now) === "ready") return task
       continue
     }
 

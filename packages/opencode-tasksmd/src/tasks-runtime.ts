@@ -4,7 +4,7 @@ import path from "node:path"
 import { parseChecklist } from "@leonardmeagher2/tasksmd"
 import type { WatchConfig } from "./config"
 import { anyTriggerDue, boardSchedules, taskWatches } from "./schedule"
-import { readState, recordWatchTrigger, updateTask } from "./state"
+import { readState, recordWatchChange, updateTask } from "./state"
 import type { PluginClient } from "./types"
 import { startWatcher } from "./watch"
 import { runWorker } from "./worker"
@@ -95,7 +95,7 @@ function syncRuntimeWatchers(directory: string, desired: Record<string, WatchCon
       state.watchers.delete(slug)
       delete state.watchConfigs?.[slug]
       // A replaced or removed watcher invalidates any trigger the old globs set.
-      updateTask(directory, slug, { triggered: undefined, matched_globs: undefined })
+      updateTask(directory, slug, { has_watch_changed: undefined, matched_watch_globs: undefined })
     }
   }
 
@@ -103,7 +103,7 @@ function syncRuntimeWatchers(directory: string, desired: Record<string, WatchCon
     if (!config.paths.length) continue
     if (state.watchers.has(slug)) continue
     const close = startWatcher(directory, slug, config, (matchedGlobs) => {
-      recordWatchTrigger(directory, slug, matchedGlobs)
+      recordWatchChange(directory, slug, matchedGlobs)
       spawnWorker(directory)
     })
     // The project root may not exist yet; leave the slug unregistered so a

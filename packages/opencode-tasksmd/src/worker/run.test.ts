@@ -540,7 +540,7 @@ describe("runTaskBySlug", () => {
     await runTaskBySlug(dir, "hourly-review", client)
     expect(prompts()).toBe(0)
 
-    updateTask(dir, "hourly-review", { triggered: true })
+    updateTask(dir, "hourly-review", { has_watch_changed: true })
     await runTaskBySlug(dir, "hourly-review", client)
     expect(prompts()).toBe(1)
   })

@@ -69,27 +69,27 @@ describe("taskWatches", () => {
 })
 
 describe("findTask watch eligibility", () => {
-  test("watch task is not due until triggered, regardless of board state", async () => {
+  test("watch task is not due until a watched path changes, regardless of board state", async () => {
     const dir = setupProject({
       "TASKS.md": "- [ ] [Rebuild](docs/rebuild.md)\n",
       "docs/rebuild.md": "---\nwatch: src/**\n---\nrebuild\n",
     })
     const parsed = parseChecklist("- [ ] [Rebuild](docs/rebuild.md)\n")
-    // pending but not triggered -> not eligible
+    // Pending but unchanged -> not eligible.
     expect(await findTask(dir, parsed, idleClient)).toBeUndefined()
 
-    updateTask(dir, "rebuild", { triggered: true })
+    updateTask(dir, "rebuild", { has_watch_changed: true })
     const selected = await findTask(dir, parsed, idleClient)
     expect(selected?.slug).toBe("rebuild")
   })
 
-  test("done watch task runs when triggered (trigger overrides state)", async () => {
+  test("done watch task runs when a watched path changes (change overrides state)", async () => {
     const dir = setupProject({
       "TASKS.md": "- [x] [Rebuild](docs/rebuild.md)\n",
       "docs/rebuild.md": "---\nwatch: src/**\n---\nrebuild\n",
     })
     const parsed = parseChecklist("- [x] [Rebuild](docs/rebuild.md)\n")
-    updateTask(dir, "rebuild", { triggered: true })
+    updateTask(dir, "rebuild", { has_watch_changed: true })
     const selected = await findTask(dir, parsed, idleClient)
     expect(selected?.slug).toBe("rebuild")
   })
@@ -101,31 +101,31 @@ describe("findTask watch eligibility", () => {
     })
     const parsed = parseChecklist("- [ ] [Rebuild](docs/rebuild.md)\n")
 
-    // Triggered but interval not elapsed (last_run just now) -> not due.
-    updateTask(dir, "rebuild", { triggered: true, last_run: new Date().toISOString() })
+    // Watched change, but the interval has not elapsed -> not due.
+    updateTask(dir, "rebuild", { has_watch_changed: true, last_run: new Date().toISOString() })
     expect(await findTask(dir, parsed, idleClient)).toBeUndefined()
 
-    // Interval elapsed (never ran) but not triggered -> not due.
-    updateTask(dir, "rebuild", { triggered: undefined, last_run: undefined })
+    // Interval elapsed (never ran) but no watched change -> not due.
+    updateTask(dir, "rebuild", { has_watch_changed: undefined, last_run: undefined })
     expect(await findTask(dir, parsed, idleClient)).toBeUndefined()
 
     // Both -> due.
-    updateTask(dir, "rebuild", { triggered: true, last_run: undefined })
+    updateTask(dir, "rebuild", { has_watch_changed: true, last_run: undefined })
     const selected = await findTask(dir, parsed, idleClient)
     expect(selected?.slug).toBe("rebuild")
   })
 
-  test("blocked watch task stays ineligible even when triggered", async () => {
+  test("blocked watch task stays ineligible even after a watched change", async () => {
     const dir = setupProject({
       "TASKS.md": "- [!] [Rebuild](docs/rebuild.md)\n",
       "docs/rebuild.md": "---\nwatch: src/**\n---\nrebuild\n",
     })
     const parsed = parseChecklist("- [!] [Rebuild](docs/rebuild.md)\n")
-    updateTask(dir, "rebuild", { triggered: true })
+    updateTask(dir, "rebuild", { has_watch_changed: true })
     expect(await findTask(dir, parsed, idleClient)).toBeUndefined()
   })
 
-  test("a slug colliding with Object.prototype is not treated as triggered", async () => {
+  test("a slug colliding with Object.prototype is not treated as changed", async () => {
     const dir = setupProject({
       "TASKS.md": "- [ ] constructor\n",
       "docs/rebuild.md": "---\nwatch: src/**\n---\nrebuild\n",

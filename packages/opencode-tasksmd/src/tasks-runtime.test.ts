@@ -77,7 +77,7 @@ describe("configuredWatchers", () => {
 })
 
 describe("watch-triggered runs", () => {
-  test("a watched change marks the task triggered and dispatches it", async () => {
+  test("a watched change marks the task changed and dispatches it", async () => {
     const dir = setupProject({
       "TASKS.md": "- [ ] [Rebuild](docs/rebuild.md)\n",
       "docs/rebuild.md": "---\nwatch: src/**\n---\nrebuild\n",
@@ -110,8 +110,8 @@ describe("watch-triggered runs", () => {
       // Past the 5s debounce plus dispatch time.
       await new Promise((resolve) => setTimeout(resolve, 6000))
 
-      expect(readState(dir).tasks["rebuild"]?.triggered).toBeUndefined() // consumed on dispatch
-      expect(readState(dir).tasks["rebuild"]?.matched_globs).toBeUndefined()
+      expect(readState(dir).tasks["rebuild"]?.has_watch_changed).toBeUndefined() // consumed on dispatch
+      expect(readState(dir).tasks["rebuild"]?.matched_watch_globs).toBeUndefined()
       expect(promptCalls).toBe(1)
       expect(prompt).toContain("A watched path matching `src/**` changed.")
       expect(prompt).not.toContain(path.join(dir, "src", "app.ts"))
@@ -180,7 +180,7 @@ describe("watch-triggered runs", () => {
       await new Promise((resolve) => setTimeout(resolve, 300))
       writeFileSync(path.join(dir, "other", "notes.txt"), "n2\n")
       await new Promise((resolve) => setTimeout(resolve, 6000))
-      expect(readState(dir).tasks["rebuild"]?.triggered).toBeUndefined()
+      expect(readState(dir).tasks["rebuild"]?.has_watch_changed).toBeUndefined()
       expect(promptCalls).toBe(0)
     } finally {
       stopTaskSchedulers(dir)
@@ -214,17 +214,17 @@ describe("watch-triggered runs", () => {
       }
     }
 
-    updateTask(dir, "rebuild", { triggered: true })
+    updateTask(dir, "rebuild", { has_watch_changed: true })
     spawnWorker(dir)
     await waitForCalls(1)
     expect(promptCalls).toBe(1)
     // Consumed by the dispatch; the completion write must leave it cleared.
     await new Promise((resolve) => setTimeout(resolve, 50))
-    expect(readState(dir).tasks["rebuild"]?.triggered).toBeUndefined()
+    expect(readState(dir).tasks["rebuild"]?.has_watch_changed).toBeUndefined()
 
     // A change arriving after that run re-queues the task. `last_run` is aged
     // past the dispatch-grace window so the task counts as free again.
-    updateTask(dir, "rebuild", { triggered: true, last_run: new Date(Date.now() - 60_000).toISOString() })
+    updateTask(dir, "rebuild", { has_watch_changed: true, last_run: new Date(Date.now() - 60_000).toISOString() })
     spawnWorker(dir)
     await waitForCalls(2)
     expect(promptCalls).toBe(2)
@@ -252,11 +252,11 @@ describe("watch-triggered runs", () => {
 
     startTaskSchedulers(dir)
     try {
-      updateTask(dir, "rebuild", { triggered: true })
+      updateTask(dir, "rebuild", { has_watch_changed: true })
       // The task now watches something else; the old trigger no longer counts.
       writeFileSync(path.join(dir, "docs", "rebuild.md"), "---\nwatch: docs/**\n---\nrebuild\n")
       reconcileTaskSchedulers(dir)
-      expect(readState(dir).tasks["rebuild"]?.triggered).toBeUndefined()
+      expect(readState(dir).tasks["rebuild"]?.has_watch_changed).toBeUndefined()
     } finally {
       stopTaskSchedulers(dir)
     }
@@ -289,7 +289,7 @@ describe("tryRunDueTask", () => {
       "TASKS.md": "- [ ] [Rebuild](docs/rebuild.md)\n",
       "docs/rebuild.md": "---\nwatch: src/**\n---\nrebuild\n",
     })
-    updateTask(dir, "rebuild", { triggered: true })
+    updateTask(dir, "rebuild", { has_watch_changed: true })
     tryRunDueTask(dir)
     expect(taskSchedulersEnabled(dir)).toBe(false)
   })
@@ -323,8 +323,8 @@ describe("tryRunDueTask", () => {
     startTaskSchedulers(dir)
     try {
       await new Promise((resolve) => setTimeout(resolve, 100))
-      expect(promptCalls).toBe(0) // not triggered yet
-      updateTask(dir, "rebuild", { triggered: true })
+      expect(promptCalls).toBe(0) // no watched change yet
+      updateTask(dir, "rebuild", { has_watch_changed: true })
       tryRunDueTask(dir)
       await waitForCalls(() => promptCalls, 1)
       expect(promptCalls).toBe(1)

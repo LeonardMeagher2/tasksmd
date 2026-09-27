@@ -43,8 +43,8 @@ export function createDebugTool(directory: string) {
         }
         const watches = taskWatches(directory, parsed)
         for (const [slug, config] of Object.entries(watches)) {
-          const fired = state.tasks[slug]?.triggered === true
-          lines.push(`  watcher ${slug}: watch ${config.paths.join(", ")}  ignore: ${config.ignore.join(", ")}  triggered: ${fired ? "yes" : "no"}`)
+          const changed = state.tasks[slug]?.has_watch_changed === true
+          lines.push(`  watcher ${slug}: watch ${config.paths.join(", ")}  ignore: ${config.ignore.join(", ")}  change pending: ${changed ? "yes" : "no"}`)
         }
 
         lines.push(`runtime: ${process.versions.bun ? "bun (opencode CLI host)" : "node (desktop host)"}`)

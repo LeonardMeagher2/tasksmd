@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
-import { logFile, readState, recordWatchTrigger, stateFile } from "./state"
+import { logFile, readState, recordWatchChange, stateFile } from "./state"
 
 describe("stateFile", () => {
   test("returns deterministic path for same directory", () => {
@@ -105,7 +105,7 @@ describe("logFile", () => {
   })
 })
 
-describe("recordWatchTrigger", () => {
+describe("recordWatchChange", () => {
   const dirs: string[] = []
 
   afterEach(() => {
@@ -122,20 +122,20 @@ describe("recordWatchTrigger", () => {
     return dir
   }
 
-  test("marks the task triggered and persists matching globs", () => {
+  test("marks that watched paths changed and persists matching globs", () => {
     const dir = tempProject()
-    recordWatchTrigger(dir, "rebuild", ["src/**"])
+    recordWatchChange(dir, "rebuild", ["src/**"])
 
     const record = readState(dir).tasks.rebuild
-    expect(record?.triggered).toBe(true)
-    expect(record?.matched_globs).toEqual(["src/**"])
+    expect(record?.has_watch_changed).toBe(true)
+    expect(record?.matched_watch_globs).toEqual(["src/**"])
   })
 
   test("accumulates matching globs across bursts without duplicates", () => {
     const dir = tempProject()
-    recordWatchTrigger(dir, "rebuild", ["src/**"])
-    recordWatchTrigger(dir, "rebuild", ["src/**", "README.md"])
+    recordWatchChange(dir, "rebuild", ["src/**"])
+    recordWatchChange(dir, "rebuild", ["src/**", "README.md"])
 
-    expect(readState(dir).tasks.rebuild?.matched_globs).toEqual(["src/**", "README.md"])
+    expect(readState(dir).tasks.rebuild?.matched_watch_globs).toEqual(["src/**", "README.md"])
   })
 })

@@ -4,7 +4,7 @@ import path from "node:path"
 import { parseChecklist, replaceTask, stripFrontmatter } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
 import { modelValue, permissionRules, taskPermissions, withDefaultTaskDeny } from "../config"
-import { scheduleDue, taskSchedules, taskWatches } from "../schedule"
+import { taskReadiness, taskSchedules, taskWatches } from "../schedule"
 import { addTaskSession, readState, updateTask } from "../state"
 import { latestSessionForTask } from "../task-session"
 import { loadTaskConfig } from "../task-config"
@@ -293,10 +293,10 @@ async function runAttached(
   }
 
   // The prompt is going out, so the dispatch consumes any pending watch
-  // trigger and its matching globs. Clearing here — before the session
+  // change and its matching globs. Clearing here — before the session
   // starts working — means a change landing during the run re-queues the task
   // instead of being clobbered by the run's bookkeeping.
-  updateTask(directory, slug, { triggered: undefined, matched_globs: undefined })
+  updateTask(directory, slug, { has_watch_changed: undefined, matched_watch_globs: undefined })
 
   // The runtime continues the turn after promptAsync returns.
   const sent = await client.session.promptAsync({
@@ -372,7 +372,7 @@ async function runResolvedTask(
     linkedContext = linkedTaskContextBlock(task.link.path, readFileSync(linkedPath, "utf-8"))
   }
 
-  const matchedGlobs = readState(projectRoot).tasks[task.slug]?.matched_globs ?? []
+  const matchedGlobs = readState(projectRoot).tasks[task.slug]?.matched_watch_globs ?? []
   const prompt = taskPrompt(task, kind, linkedContext, matchedGlobs)
 
   log(projectRoot, `task=${task.slug} kind=${kind} session=${session.id || "new"}`)
@@ -431,14 +431,16 @@ export async function runTaskBySlug(directory: string, targetSlug: string, clien
     const state = readState(projectRoot).tasks[targetSlug]
     const scheduleMap = taskSchedules(projectRoot, parsed)
     const interval = Object.hasOwn(scheduleMap, targetSlug) ? scheduleMap[targetSlug] : undefined
-    if (interval && !scheduleDue(state?.last_run, interval)) {
+    const watches = taskWatches(projectRoot, parsed)
+    const hasWatch = Object.hasOwn(watches, targetSlug)
+    const readiness = taskReadiness(interval, hasWatch, state)
+    if (readiness === "not-due") {
       log(projectRoot, `task=${targetSlug} action=skip reason=not-due last_run=${state?.last_run}`)
       return
     }
 
-    const watches = taskWatches(projectRoot, parsed)
-    if (Object.hasOwn(watches, targetSlug) && state?.triggered !== true) {
-      log(projectRoot, `task=${targetSlug} action=skip reason=watch-not-triggered`)
+    if (readiness === "watch-not-changed") {
+      log(projectRoot, `task=${targetSlug} action=skip reason=watch-not-changed`)
       return
     }
   }

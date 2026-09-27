@@ -34,8 +34,8 @@ for (const [slug, interval] of Object.entries(configured)) {
 }
 const watches = taskWatches(directory, parsed)
 for (const [slug, config] of Object.entries(watches)) {
-  const fired = state.tasks[slug]?.triggered === true
-  lines.push(`  watcher ${slug}: watch ${config.paths.join(", ")}  ignore: ${config.ignore.join(", ")}  triggered: ${fired ? "yes" : "no"}`)
+  const changed = state.tasks[slug]?.has_watch_changed === true
+  lines.push(`  watcher ${slug}: watch ${config.paths.join(", ")}  ignore: ${config.ignore.join(", ")}  change pending: ${changed ? "yes" : "no"}`)
 }
 
 // The board only: what the worker picks also depends on session status,

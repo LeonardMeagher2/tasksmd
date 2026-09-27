@@ -4,7 +4,7 @@ import path from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
 
 import { parseChecklist } from "@leonardmeagher2/tasksmd"
-import { anyTriggerDue, scheduleDue } from "./schedule"
+import { anyTriggerDue, scheduleDue, taskReadiness } from "./schedule"
 import type { ProjectState } from "./state"
 
 const NOW = Date.parse("2026-01-01T12:00:00.000Z")
@@ -39,6 +39,20 @@ describe("scheduleDue", () => {
   })
 })
 
+describe("taskReadiness", () => {
+  test("requires every configured condition", () => {
+    const recentRun = at(30)
+    expect(taskReadiness(3600, false, { last_run: recentRun }, NOW)).toBe("not-due")
+    expect(taskReadiness(undefined, true, {}, NOW)).toBe("watch-not-changed")
+    expect(taskReadiness(3600, true, { last_run: recentRun, has_watch_changed: true }, NOW)).toBe("not-due")
+    expect(taskReadiness(3600, true, { last_run: at(60), has_watch_changed: true }, NOW)).toBe("ready")
+  })
+
+  test("tasks without watch or schedule conditions are ready", () => {
+    expect(taskReadiness(undefined, false, undefined, NOW)).toBe("ready")
+  })
+})
+
 describe("anyTriggerDue", () => {
   const dirs: string[] = []
 
@@ -69,16 +83,16 @@ describe("anyTriggerDue", () => {
     expect(anyTriggerDue(dir, parseChecklist("- [~] Do work\n"), empty)).toBe(false)
   })
 
-  test("true when a watched task is triggered", () => {
+  test("true when a watched task has a pending change", () => {
     const dir = setup({
       "docs/rebuild.md": "---\nwatch: src/**\n---\nrebuild\n",
     })
     const parsed = parseChecklist("- [~] [Rebuild](docs/rebuild.md)\n")
-    const state: ProjectState = { tasks: { rebuild: { triggered: true } } }
+    const state: ProjectState = { tasks: { rebuild: { has_watch_changed: true } } }
     expect(anyTriggerDue(dir, parsed, state)).toBe(true)
   })
 
-  test("false when a watched task is not triggered", () => {
+  test("false when a watched task has no pending change", () => {
     const dir = setup({
       "docs/rebuild.md": "---\nwatch: src/**\n---\nrebuild\n",
     })
@@ -102,8 +116,8 @@ describe("anyTriggerDue", () => {
     })
     const parsed = parseChecklist("- [~] [Rebuild](docs/rebuild.md)\n")
     const intervalDue: ProjectState = { tasks: { rebuild: { last_run: at(60) } } }
-    const watchDue: ProjectState = { tasks: { rebuild: { last_run: at(30), triggered: true } } }
-    const bothDue: ProjectState = { tasks: { rebuild: { last_run: at(60), triggered: true } } }
+    const watchDue: ProjectState = { tasks: { rebuild: { last_run: at(30), has_watch_changed: true } } }
+    const bothDue: ProjectState = { tasks: { rebuild: { last_run: at(60), has_watch_changed: true } } }
 
     expect(anyTriggerDue(dir, parsed, intervalDue, NOW)).toBe(false)
     expect(anyTriggerDue(dir, parsed, watchDue, NOW)).toBe(false)
@@ -115,7 +129,7 @@ describe("anyTriggerDue", () => {
       "docs/rebuild.md": "---\nwatch: src/**\n---\nrebuild\n",
     })
     const parsed = parseChecklist("- [!] [Rebuild](docs/rebuild.md)\n")
-    const state: ProjectState = { tasks: { rebuild: { triggered: true } } }
+    const state: ProjectState = { tasks: { rebuild: { has_watch_changed: true } } }
     expect(anyTriggerDue(dir, parsed, state)).toBe(false)
   })
 })
