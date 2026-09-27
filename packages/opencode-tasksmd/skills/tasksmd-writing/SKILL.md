@@ -80,8 +80,28 @@ How it works:
    the board frontmatter for that task.
 3. Overlay is a deep merge, with linked-file values winning on conflicts.
 
+OpenCode Tasks reads `watch` only from linked task files. Board-level `watch`
+is ignored and is not inherited.
+
 Practical rule: put shared defaults on the board, and task-specific overrides
 in linked files.
+
+### Watch behavior
+
+`watch` accepts one path, a list of paths, or an object with `paths` and
+`ignore`. Paths resolve from the project root; absolute paths and paths outside
+the root (such as `../shared/**`) are also supported. Matching a directory
+watches its contents.
+
+By default, `.git`, `node_modules`, `dist`, and `TASKS.md` are ignored. In
+object form, `ignore` replaces that list; use `ignore: []` to disable the
+defaults.
+
+Added, changed, or deleted paths trigger the task. Bursts are coalesced. If
+`every` is also set, both the interval and a file change must be due. A pending
+trigger survives `tasks_stop` and runs after the next `tasks_start`; changes
+made while stopped are not seen. Avoid watching paths the task itself writes,
+or it may trigger itself repeatedly.
 
 ## Writing linked task files
 

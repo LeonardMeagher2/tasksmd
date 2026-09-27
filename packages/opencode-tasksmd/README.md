@@ -66,7 +66,7 @@ every trigger it declares is satisfied:
 
 - a task with its own `every` is due when its interval has elapsed (or it has
   never run);
-- a task with `watch` is due when a watched path has changed since its last run;
+- a task with `watch` in its linked file is due when a watched path changes;
 - a task with both needs both — it re-runs at most every interval, and only when
   files changed;
 - a task with neither is due by board state: in progress tasks continue, waiting
@@ -104,51 +104,6 @@ interval, counted from the task's last run — so a restart does not lose the
 schedule, and a missed interval is picked up on the next check rather than
 skipped. Use `false` or `0` to disable it. Examples: `5 minutes`, `1h`,
 `3600`, `false`.
-
-`watch` triggers a task when files change. In a linked task file, it accepts a
-glob or list of globs resolved against the project root. A pattern naming a
-directory — by trailing slash, or by resolving to one — watches its contents;
-one matching files watches those files. The same setting covers both. By
-default, `.git`, `node_modules`, `dist`, and `TASKS.md` are ignored. Paths may
-also be absolute or relative to a parent directory, such as `../shared/**`.
-
-Use object form to customize ignored paths. Supplying `ignore` replaces the
-default list; `ignore: []` disables all default exclusions for that task.
-
-```md
----
-watch:
-  paths:
-    - src/**
-    - README.md
-  ignore:
-    - node_modules/**
-    - .git/**
-    - dist/**
-    - TASKS.md
----
-```
-
-When a watched path is added, changed, or deleted, the task becomes due and
-runs once a `max_active` slot is free. Rapid bursts of changes are coalesced
-into one run, and a trigger already pending when background work stops still
-fires on the next `tasks_start` — changes made while it is off are not seen.
-The task prompt names the configured watch globs that matched, so the agent
-knows which part of the project to inspect.
-With `every` also set, both must hold — the task re-runs at most every interval,
-and only when files changed. Use `false` or `0` to disable it.
-
-```md
----
-watch:
-  - src/**
-  - README.md
----
-```
-
-A task that writes into its own watched paths will re-trigger itself after
-every run, so keep a task's outputs outside its `watch` globs or add them to its
-`ignore` list.
 
 `model` sets the default model for task runs.
 
@@ -208,9 +163,23 @@ report its own status, but it cannot control the scheduler.
 
 ### Linked Task Files
 
-Settings in a linked task file override the board's defaults for that task. A
-linked file can set `every`, `watch`, `model`, `agent`, `auto_approve`, and
-`permission`.
+Linked task files can override the board's defaults for `every`, `model`,
+`agent`, `auto_approve`, and `permission`.
+
+`watch` is configured only in a linked task file; it is not inherited from
+`TASKS.md`. For example:
+
+```md
+---
+watch:
+  - src/**
+  - README.md
+---
+```
+
+A matching change triggers that task. If `every` is also set, both conditions
+must be met. See the bundled `tasksmd-writing` skill for ignore options and
+matching details.
 
 ## Sessions
 
