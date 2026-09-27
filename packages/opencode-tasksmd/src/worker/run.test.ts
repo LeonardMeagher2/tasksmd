@@ -79,6 +79,24 @@ describe("taskPrompt", () => {
     expect(prompt).not.toContain("Linked task context")
     expect(prompt).toContain("task_done")
   })
+
+  test("names matched globs rather than individual changed files", () => {
+    const prompt = taskPrompt(task, "recurring", "", ["src/**", "README.md"])
+    expect(prompt).toContain("Changes were detected in paths matching these watch patterns:\n- `src/**`\n- `README.md`")
+    expect(prompt).toContain("Check the relevant changes as you work.")
+    expect(prompt).not.toContain("runs on a schedule")
+  })
+
+  test("no matched glob means no watch block", () => {
+    expect(taskPrompt(task, "fresh")).not.toContain("watched path matching")
+    expect(taskPrompt(task, "resume")).not.toContain("watched path matching")
+  })
+
+  test("a resumed task sees the matched glob", () => {
+    const prompt = taskPrompt({ ...task, state: "active" }, "resume", "", ["src/**"])
+    expect(prompt).toContain("A watched path matching `src/**` changed. Check the relevant changes as you work.")
+    expect(prompt).not.toContain("Steps")
+  })
 })
 
 describe("linkedTaskContextBlock", () => {

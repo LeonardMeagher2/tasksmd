@@ -133,6 +133,8 @@ When a watched path is added, changed, or deleted, the task becomes due and
 runs once a `max_active` slot is free. Rapid bursts of changes are coalesced
 into one run, and a trigger already pending when background work stops still
 fires on the next `tasks_start` — changes made while it is off are not seen.
+The task prompt names the configured watch globs that matched, so the agent
+knows which part of the project to inspect.
 With `every` also set, both must hold — the task re-runs at most every interval,
 and only when files changed. Use `false` or `0` to disable it.
 

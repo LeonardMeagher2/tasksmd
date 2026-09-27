@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import os from "node:os"
 import path from "node:path"
 import { afterEach, describe, expect, test } from "bun:test"
-import { readState, stateFile, logFile } from "./state"
+import { logFile, readState, recordWatchTrigger, stateFile } from "./state"
 
 describe("stateFile", () => {
   test("returns deterministic path for same directory", () => {
@@ -102,5 +102,40 @@ describe("logFile", () => {
   test("path contains opencode-tasks segment", () => {
     const result = logFile("/tmp/project")
     expect(result).toContain("opencode-tasks")
+  })
+})
+
+describe("recordWatchTrigger", () => {
+  const dirs: string[] = []
+
+  afterEach(() => {
+    while (dirs.length) {
+      const dir = dirs.pop()!
+      rmSync(stateFile(dir), { force: true })
+      rmSync(dir, { recursive: true, force: true })
+    }
+  })
+
+  function tempProject(): string {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "tasksmd-trigger-"))
+    dirs.push(dir)
+    return dir
+  }
+
+  test("marks the task triggered and persists matching globs", () => {
+    const dir = tempProject()
+    recordWatchTrigger(dir, "rebuild", ["src/**"])
+
+    const record = readState(dir).tasks.rebuild
+    expect(record?.triggered).toBe(true)
+    expect(record?.matched_globs).toEqual(["src/**"])
+  })
+
+  test("accumulates matching globs across bursts without duplicates", () => {
+    const dir = tempProject()
+    recordWatchTrigger(dir, "rebuild", ["src/**"])
+    recordWatchTrigger(dir, "rebuild", ["src/**", "README.md"])
+
+    expect(readState(dir).tasks.rebuild?.matched_globs).toEqual(["src/**", "README.md"])
   })
 })

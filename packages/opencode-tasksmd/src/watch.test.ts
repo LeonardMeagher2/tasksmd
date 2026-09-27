@@ -139,13 +139,17 @@ describe("findTask watch eligibility", () => {
 })
 
 describe("startWatcher", () => {
-  test("fires debounced once when a matching file changes", async () => {
+  test("fires debounced once, reporting each matching configured glob", async () => {
     const dir = setupProject({
       "src/a.ts": "a\n",
       "src/b.ts": "b\n",
     })
     let fires = 0
-    const close = startWatcher(dir, "rebuild", parseWatch(["src/**"]), () => { fires++ })
+    let reported: string[] = []
+    const close = startWatcher(dir, "rebuild", parseWatch(["src/**", "src/a.ts"]), (matchedGlobs) => {
+      fires++
+      reported = matchedGlobs
+    })
     try {
       // Give chokidar a moment to finish its initial scan (ignoreInitial).
       await new Promise((resolve) => setTimeout(resolve, 300))
@@ -154,6 +158,7 @@ describe("startWatcher", () => {
       // Debounce is 5s; wait past it for the single coalesced fire.
       await new Promise((resolve) => setTimeout(resolve, 6000))
       expect(fires).toBe(1)
+      expect(reported).toEqual(["src/**", "src/a.ts"])
     } finally {
       close?.()
     }

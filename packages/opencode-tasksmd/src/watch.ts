@@ -49,9 +49,9 @@ function existingWatchRoot(directory: string, glob: string): string | undefined 
 }
 
 /**
- * Watch a set of globs under `directory` and call `onFire` (debounced) when a
- * matching path changes. Returns a function that closes the watcher, or
- * `undefined` when the project root itself does not exist.
+ * Watch a set of globs under `directory` and call `onFire` (debounced) with the
+ * configured patterns that matched. Returns a function that closes the watcher,
+ * or `undefined` when the project root itself does not exist.
  *
  * chokidar v5 dropped glob support, so each glob is watched at its literal base
  * (via `glob-parent`) and the glob itself is applied to each changed path. A
@@ -62,17 +62,18 @@ export function startWatcher(
   directory: string,
   slug: string,
   config: WatchConfig,
-  onFire: () => void,
+  onFire: (matchedGlobs: string[]) => void,
 ): (() => void) | undefined {
   if (!config.paths.length) return undefined
 
-  const globs = config.paths.flatMap((p) => {
+  const patterns = config.paths.map((p) => {
     const glob = toGlob(directory, p)
     // A glob-free pattern may name a file or a directory — including one that
     // does not exist yet — so match the path itself and its possible contents.
-    return /[*?[\]{}]/.test(glob) ? [glob] : [glob, `${glob}/**`]
+    const globs = /[*?[\]{}]/.test(glob) ? [glob] : [glob, `${glob}/**`]
+    return { pattern: p, globs, matches: picomatch(globs, { dot: true }) }
   })
-  const matches = picomatch(globs, { dot: true })
+  const globs = patterns.flatMap(({ globs }) => globs)
   const ignoreGlobs = config.ignore.flatMap((pattern) => {
     // Leading `**/` defaults apply to watched paths anywhere, while other
     // relative ignores are scoped to the project root like watch paths.
@@ -101,15 +102,22 @@ export function startWatcher(
   })
 
   let timer: ReturnType<typeof setTimeout> | undefined
+  const pending = new Set<string>()
+  let lastChanged = ""
   const fire = (changed: string) => {
     // Match absolute paths so `../shared/**` and absolute globs work too.
     const absolute = globPath(path.resolve(changed))
-    if (!matches(absolute)) return
+    const matched = patterns.filter(({ matches }) => matches(absolute))
+    if (!matched.length) return
+    for (const { pattern } of matched) pending.add(pattern)
+    lastChanged = absolute
     if (timer) clearTimeout(timer)
     timer = setTimeout(() => {
       timer = undefined
-      log(directory, `task=${slug} action=watch-fire file=${absolute}`)
-      onFire()
+      const matchedGlobs = [...pending]
+      pending.clear()
+      log(directory, `task=${slug} action=watch-fire file=${lastChanged}`)
+      onFire(matchedGlobs)
     }, WATCH_DEBOUNCE_MS)
     timer.unref?.()
   }
@@ -126,6 +134,7 @@ export function startWatcher(
   return () => {
     if (timer) clearTimeout(timer)
     timer = undefined
+    pending.clear()
     void watcher.close()
   }
 }

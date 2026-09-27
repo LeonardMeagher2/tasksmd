@@ -35,24 +35,37 @@ export function linkedTaskContextBlock(linkPath: string, body: string, limit = L
   return `Linked task file: ${linkPath}\n\n${trimmed.slice(0, limit)}\n\n[Linked task content truncated to ${limit} characters. Read the full linked file before making changes.]`
 }
 
-export function taskPrompt(task: ChecklistTask, kind: PromptKind, linkedContext = ""): string {
+function watchBlock(matchedGlobs: string[]): string {
+  if (!matchedGlobs.length) return ""
+  if (matchedGlobs.length === 1) {
+    return `\n\nA watched path matching \`${matchedGlobs[0]}\` changed. Check the relevant changes as you work.`
+  }
+  return `\n\nChanges were detected in paths matching these watch patterns:\n${matchedGlobs.map((glob) => `- \`${glob}\``).join("\n")}\nCheck the relevant changes as you work.`
+}
+
+export function taskPrompt(task: ChecklistTask, kind: PromptKind, linkedContext = "", matchedGlobs: string[] = []): string {
+  const watchSection = watchBlock(matchedGlobs)
+
   if (kind === "resume") {
     return `Task current status: ${task.state}.
-Continue the task.
+Continue the task.${watchSection}
 Use the task_info tool to see the task.
 When done, use the task_done tool.
 If stuck, use the task_done tool with blocked_reason.`
   }
 
-  const intro = kind === "recurring" ? "This task runs on a schedule. You did it before. Do it again now:" : "Do this task:"
+  const intro = kind === "recurring"
+    ? matchedGlobs.length
+      ? "Do this task again now:"
+      : "This task runs on a schedule. You did it before. Do it again now:"
+    : "Do this task:"
   const linkedSection = kind === "fresh" && linkedContext ? `\n\nLinked task context:\n${linkedContext}` : ""
 
   return `${intro}
 
 Task current status: ${task.state}.
 
-${task.raw}
-${linkedSection}
+${task.raw}${watchSection}${linkedSection}
 
 Steps:
 1. Read the task. Read every file it links to.
@@ -280,10 +293,10 @@ async function runAttached(
   }
 
   // The prompt is going out, so the dispatch consumes any pending watch
-  // trigger. Clearing here — before the session starts working — means a
-  // change landing during the run re-queues the task instead of being
-  // clobbered by the run's bookkeeping.
-  updateTask(directory, slug, { triggered: undefined })
+  // trigger and its matching globs. Clearing here — before the session
+  // starts working — means a change landing during the run re-queues the task
+  // instead of being clobbered by the run's bookkeeping.
+  updateTask(directory, slug, { triggered: undefined, matched_globs: undefined })
 
   // The runtime continues the turn after promptAsync returns.
   const sent = await client.session.promptAsync({
@@ -359,7 +372,8 @@ async function runResolvedTask(
     linkedContext = linkedTaskContextBlock(task.link.path, readFileSync(linkedPath, "utf-8"))
   }
 
-  const prompt = taskPrompt(task, kind, linkedContext)
+  const matchedGlobs = readState(projectRoot).tasks[task.slug]?.matched_globs ?? []
+  const prompt = taskPrompt(task, kind, linkedContext, matchedGlobs)
 
   log(projectRoot, `task=${task.slug} kind=${kind} session=${session.id || "new"}`)
   log(projectRoot, `task=${task.slug} action=start mode=attached runtime=plugin`)

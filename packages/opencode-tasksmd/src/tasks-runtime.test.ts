@@ -85,6 +85,7 @@ describe("watch-triggered runs", () => {
     })
 
     let promptCalls = 0
+    let prompt = ""
     registerTaskRuntimeClient(dir, {
       tui: { showToast: async () => ({}) },
       app: { agents: async () => ({ data: [] }) },
@@ -93,7 +94,11 @@ describe("watch-triggered runs", () => {
         create: async () => ({ data: { id: "ses_1" } }),
         update: async () => ({}),
         status: async () => ({ data: {} }),
-        promptAsync: async () => { promptCalls++; return {} },
+        promptAsync: async (params) => {
+          promptCalls++
+          prompt = ((params as { body: { parts: { text: string }[] } }).body.parts[0]?.text ?? "")
+          return {}
+        },
       },
     })
 
@@ -106,7 +111,10 @@ describe("watch-triggered runs", () => {
       await new Promise((resolve) => setTimeout(resolve, 6000))
 
       expect(readState(dir).tasks["rebuild"]?.triggered).toBeUndefined() // consumed on dispatch
+      expect(readState(dir).tasks["rebuild"]?.matched_globs).toBeUndefined()
       expect(promptCalls).toBe(1)
+      expect(prompt).toContain("A watched path matching `src/**` changed.")
+      expect(prompt).not.toContain(path.join(dir, "src", "app.ts"))
     } finally {
       stopTaskSchedulers(dir)
     }
