@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs"
 import path from "node:path"
 
 import { parseChecklist } from "@leonardmeagher2/tasksmd"
-import { tryRunTask } from "../tasks-runtime"
+import { tryRunDueTask, tryRunTask } from "../tasks-runtime"
 import { readState } from "../state"
 import { showToast } from "./toast"
 import type { PluginClient } from "../types"
@@ -71,6 +71,10 @@ export function createEventHook(client: PluginClient, directory: string) {
       if (event.type === "session.idle") {
         const sessionID = event.properties?.sessionID
         if (typeof sessionID === "string" && sessionID) await toastFinishedSession(client, directory, sessionID)
+        // A freed slot may let a trigger-due task start — e.g. one whose watch
+        // fired while `max_active` was reached. Gated on an actual trigger so a
+        // merely-active task is not resumed in an idle loop.
+        tryRunDueTask(directory)
         return
       }
 

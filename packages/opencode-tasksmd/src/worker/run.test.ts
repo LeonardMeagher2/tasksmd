@@ -79,6 +79,24 @@ describe("taskPrompt", () => {
     expect(prompt).not.toContain("Linked task context")
     expect(prompt).toContain("task_done")
   })
+
+  test("names matched globs rather than individual changed files", () => {
+    const prompt = taskPrompt(task, "recurring", "", ["src/**", "README.md"])
+    expect(prompt).toContain("Changes were detected in paths matching these watch patterns:\n- `src/**`\n- `README.md`")
+    expect(prompt).toContain("Check the relevant changes as you work.")
+    expect(prompt).not.toContain("runs on a schedule")
+  })
+
+  test("no matched glob means no watch block", () => {
+    expect(taskPrompt(task, "fresh")).not.toContain("watched path matching")
+    expect(taskPrompt(task, "resume")).not.toContain("watched path matching")
+  })
+
+  test("a resumed task sees the matched glob", () => {
+    const prompt = taskPrompt({ ...task, state: "active" }, "resume", "", ["src/**"])
+    expect(prompt).toContain("A watched path matching `src/**` changed. Check the relevant changes as you work.")
+    expect(prompt).not.toContain("Steps")
+  })
 })
 
 describe("linkedTaskContextBlock", () => {
@@ -509,6 +527,20 @@ describe("runTaskBySlug", () => {
     updateTask(dir, "hourly-review", { last_run: new Date(Date.now() - 7200_000).toISOString() })
 
     const { client, prompts } = countingClient()
+    await runTaskBySlug(dir, "hourly-review", client)
+    expect(prompts()).toBe(1)
+  })
+
+  test("a recurring task with watch also requires a watch trigger", async () => {
+    const dir = recurringProject()
+    writeFileSync(path.join(dir, "checks", "hourly.md"), "---\nevery: 1 hour\nwatch: src/**\n---\nreview\n")
+    updateTask(dir, "hourly-review", { last_run: new Date(Date.now() - 7200_000).toISOString() })
+
+    const { client, prompts } = countingClient()
+    await runTaskBySlug(dir, "hourly-review", client)
+    expect(prompts()).toBe(0)
+
+    updateTask(dir, "hourly-review", { has_watch_changed: true })
     await runTaskBySlug(dir, "hourly-review", client)
     expect(prompts()).toBe(1)
   })

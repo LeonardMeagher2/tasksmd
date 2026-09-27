@@ -12,6 +12,10 @@ export type TaskRunState = {
   /** When a run was last dispatched, successful or not. Drives recurring schedules. */
   last_run?: string
   last_completed?: string
+  /** A watched path changed since the task's last dispatch; cleared on dispatch. */
+  has_watch_changed?: boolean
+  /** Configured watch globs that matched since the last dispatch. */
+  matched_watch_globs?: string[]
 }
 
 export type ProjectState = {
@@ -95,6 +99,10 @@ export function readState(directory: string): ProjectState {
           blocked_reason: typeof record.blocked_reason === "string" ? record.blocked_reason : undefined,
           last_run: typeof record.last_run === "string" ? record.last_run : undefined,
           last_completed: typeof record.last_completed === "string" ? record.last_completed : undefined,
+          has_watch_changed: record.has_watch_changed === true ? true : undefined,
+          matched_watch_globs: Array.isArray(record.matched_watch_globs)
+            ? record.matched_watch_globs.filter((entry): entry is string => typeof entry === "string")
+            : undefined,
         }] satisfies [string, TaskRunState]
       }),
     )
@@ -126,4 +134,13 @@ export function addTaskSession(directory: string, slug: string, sessionID: strin
   const existing = state.tasks[slug] ?? {}
   state.tasks[slug] = { ...existing, session_id: sessionID }
   writeState(directory, state)
+}
+
+/** Keep the configured globs that matched while the task waits for a slot. */
+export function recordWatchChange(directory: string, slug: string, matchedGlobs: string[]): void {
+  const existing = readState(directory).tasks[slug]?.matched_watch_globs ?? []
+  updateTask(directory, slug, {
+    has_watch_changed: true,
+    matched_watch_globs: [...new Set([...existing, ...matchedGlobs])],
+  })
 }

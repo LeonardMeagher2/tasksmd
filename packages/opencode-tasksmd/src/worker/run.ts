@@ -4,7 +4,7 @@ import path from "node:path"
 import { parseChecklist, replaceTask, stripFrontmatter } from "@leonardmeagher2/tasksmd"
 import type { ChecklistTask } from "@leonardmeagher2/tasksmd"
 import { modelValue, permissionRules, taskPermissions, withDefaultTaskDeny } from "../config"
-import { scheduleDue, taskSchedules } from "../schedule"
+import { taskReadiness, taskSchedules, taskWatches } from "../schedule"
 import { addTaskSession, readState, updateTask } from "../state"
 import { latestSessionForTask } from "../task-session"
 import { loadTaskConfig } from "../task-config"
@@ -35,24 +35,37 @@ export function linkedTaskContextBlock(linkPath: string, body: string, limit = L
   return `Linked task file: ${linkPath}\n\n${trimmed.slice(0, limit)}\n\n[Linked task content truncated to ${limit} characters. Read the full linked file before making changes.]`
 }
 
-export function taskPrompt(task: ChecklistTask, kind: PromptKind, linkedContext = ""): string {
+function watchBlock(matchedGlobs: string[]): string {
+  if (!matchedGlobs.length) return ""
+  if (matchedGlobs.length === 1) {
+    return `\n\nA watched path matching \`${matchedGlobs[0]}\` changed. Check the relevant changes as you work.`
+  }
+  return `\n\nChanges were detected in paths matching these watch patterns:\n${matchedGlobs.map((glob) => `- \`${glob}\``).join("\n")}\nCheck the relevant changes as you work.`
+}
+
+export function taskPrompt(task: ChecklistTask, kind: PromptKind, linkedContext = "", matchedGlobs: string[] = []): string {
+  const watchSection = watchBlock(matchedGlobs)
+
   if (kind === "resume") {
     return `Task current status: ${task.state}.
-Continue the task.
+Continue the task.${watchSection}
 Use the task_info tool to see the task.
 When done, use the task_done tool.
 If stuck, use the task_done tool with blocked_reason.`
   }
 
-  const intro = kind === "recurring" ? "This task runs on a schedule. You did it before. Do it again now:" : "Do this task:"
+  const intro = kind === "recurring"
+    ? matchedGlobs.length
+      ? "Do this task again now:"
+      : "This task runs on a schedule. You did it before. Do it again now:"
+    : "Do this task:"
   const linkedSection = kind === "fresh" && linkedContext ? `\n\nLinked task context:\n${linkedContext}` : ""
 
   return `${intro}
 
 Task current status: ${task.state}.
 
-${task.raw}
-${linkedSection}
+${task.raw}${watchSection}${linkedSection}
 
 Steps:
 1. Read the task. Read every file it links to.
@@ -279,6 +292,12 @@ async function runAttached(
     }
   }
 
+  // The prompt is going out, so the dispatch consumes any pending watch
+  // change and its matching globs. Clearing here — before the session
+  // starts working — means a change landing during the run re-queues the task
+  // instead of being clobbered by the run's bookkeeping.
+  updateTask(directory, slug, { has_watch_changed: undefined, matched_watch_globs: undefined })
+
   // The runtime continues the turn after promptAsync returns.
   const sent = await client.session.promptAsync({
     path: { id },
@@ -353,7 +372,8 @@ async function runResolvedTask(
     linkedContext = linkedTaskContextBlock(task.link.path, readFileSync(linkedPath, "utf-8"))
   }
 
-  const prompt = taskPrompt(task, kind, linkedContext)
+  const matchedGlobs = readState(projectRoot).tasks[task.slug]?.matched_watch_globs ?? []
+  const prompt = taskPrompt(task, kind, linkedContext, matchedGlobs)
 
   log(projectRoot, `task=${task.slug} kind=${kind} session=${session.id || "new"}`)
   log(projectRoot, `task=${task.slug} action=start mode=attached runtime=plugin`)
@@ -407,11 +427,20 @@ export async function runTaskBySlug(directory: string, targetSlug: string, clien
   // A timer only wakes the task up; state decides whether it is really due, so
   // a run triggered from elsewhere in the meantime is not repeated here. A
   // forced run (tasks_run) skips this check: the user asked for it now.
-  const interval = taskSchedules(projectRoot, parsed)[targetSlug]
-  if (!force && interval) {
-    const lastRun = readState(projectRoot).tasks[targetSlug]?.last_run
-    if (!scheduleDue(lastRun, interval)) {
-      log(projectRoot, `task=${targetSlug} action=skip reason=not-due last_run=${lastRun}`)
+  if (!force) {
+    const state = readState(projectRoot).tasks[targetSlug]
+    const scheduleMap = taskSchedules(projectRoot, parsed)
+    const interval = Object.hasOwn(scheduleMap, targetSlug) ? scheduleMap[targetSlug] : undefined
+    const watches = taskWatches(projectRoot, parsed)
+    const hasWatch = Object.hasOwn(watches, targetSlug)
+    const readiness = taskReadiness(interval, hasWatch, state)
+    if (readiness === "not-due") {
+      log(projectRoot, `task=${targetSlug} action=skip reason=not-due last_run=${state?.last_run}`)
+      return
+    }
+
+    if (readiness === "watch-not-changed") {
+      log(projectRoot, `task=${targetSlug} action=skip reason=watch-not-changed`)
       return
     }
   }
